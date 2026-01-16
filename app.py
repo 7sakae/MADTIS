@@ -535,22 +535,22 @@ else:
     st.info("👆 Upload Product CSV in Step 1 to enable ontology generation.")
 
 # ============================================================================
-# STEP 3: CAMPAIGN BRIEF → WEIGHTED INTENT PROFILE (LLM)
-# - Select Top intents from the ontology
-# - Provide rationale
-# - Normalize weights to sum = 1
-# - Store in session_state (read-only demo: no DWH writes)
+# STEP 3: CAMPAIGN BRIEF → WEIGHTED INTENT PROFILE (LLM)  [RATE-LIMIT SAFE]
+# Fixes for 429 quota:
+# 1) Batch multiple campaigns per API call (reduces request count)
+# 2) Throttle requests with a minimum interval (RPM control)
+# 3) Retry with backoff + respect retry_delay seconds when present
+# 4) Resume safely (keeps partial results in session_state)
 # ============================================================================
 
 st.divider()
 st.header("Step 3: Campaign → Weighted Intent Profile (LLM)")
-st.caption("Use LLM to map each campaign brief to Top intents from the ontology, with normalized weights + rationale.")
+st.caption("Rate-limit safe: batch + throttle + retry/backoff. No DWH writes (session_state only).")
 
 # Preconditions
 if "campaigns_df" not in st.session_state:
     st.info("👆 Please load campaign input in Step 0 first.")
     st.stop()
-
 if "ontology" not in st.session_state or "dim_intent_df" not in st.session_state:
     st.info("👆 Please generate the ontology in Step 2 first.")
     st.stop()
@@ -558,11 +558,11 @@ if "ontology" not in st.session_state or "dim_intent_df" not in st.session_state
 campaigns_df = st.session_state["campaigns_df"].copy()
 dim_intent_df = st.session_state["dim_intent_df"].copy()
 
-# API key: reuse the key from Step 2 if available
+# API key
 st.subheader("🔑 API Configuration")
 gemini_api_key = None
-if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
-    gemini_api_key = st.secrets['GEMINI_API_KEY']
+if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
     st.success("✅ Gemini API key loaded from secrets")
 else:
     gemini_api_key = st.text_input(
@@ -571,7 +571,6 @@ else:
         help="Get your API key from https://aistudio.google.com/apikey",
         key="gemini_key_step3"
     )
-
 if not gemini_api_key:
     st.warning("⚠️ Please provide a Gemini API key to generate campaign intent profiles.")
     st.stop()
@@ -588,11 +587,18 @@ with left:
     include_lifestyle_context = st.checkbox("Include lifestyle context in prompt", value=True)
 
 with right:
-    st.subheader("Actions")
+    st.subheader("Rate-limit settings (to avoid 429)")
+    # Use a stable model name (you can change if you want)
+    model_name = st.text_input("Model name", value="gemini-2.0-flash-exp")
+    # Your error says 10 RPM quota → set below that
+    rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8)
+    batch_size = st.number_input("Campaigns per request (batch size)", min_value=1, max_value=10, value=3)
+    max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4)
+
     gen_campaign_profile_btn = st.button("🤖 Generate Campaign Intent Profiles", type="primary", use_container_width=True)
     st.info(f"Will process {len(campaigns_df)} campaign(s)")
 
-# Build intent candidates from ontology
+# Build intent candidates (keep prompt concise)
 intent_candidates = []
 for _, r in dim_intent_df.iterrows():
     intent_candidates.append({
@@ -600,31 +606,25 @@ for _, r in dim_intent_df.iterrows():
         "intent_name": str(r.get("intent_name", "")).strip(),
         "definition": str(r.get("definition", "")).strip(),
         "lifestyle_id": str(r.get("lifestyle_id", "")).strip(),
-        "include_examples": r.get("include_examples", "[]"),
-        "exclude_examples": r.get("exclude_examples", "[]"),
     })
 
-# Limit prompt size defensively (keep concise but useful)
-def _safe_intent_snippet(intent_list, max_chars=18000):
-    txt = json.dumps(intent_list, ensure_ascii=False)
+def _safe_json_snippet(obj, max_chars=16000):
+    txt = json.dumps(obj, ensure_ascii=False)
     return txt[:max_chars]
 
-intent_snippet = _safe_intent_snippet(intent_candidates)
+intent_snippet = _safe_json_snippet(intent_candidates)
 
 # Helpers
 def normalize_weights(items):
-    # items: list of dicts with "weight"
     w = [float(x.get("weight", 0)) for x in items]
     s = sum(w)
     if s <= 0:
-        # fallback: equal weights
         n = len(items)
         for x in items:
             x["weight"] = round(1.0 / max(n, 1), 4)
         return items
     for x in items:
         x["weight"] = round(float(x.get("weight", 0)) / s, 4)
-    # fix rounding drift to make sum exactly 1.0
     drift = round(1.0 - sum([x["weight"] for x in items]), 4)
     if items:
         items[0]["weight"] = round(items[0]["weight"] + drift, 4)
@@ -640,102 +640,187 @@ def extract_json_from_text(text: str) -> dict:
     text = re.sub(r"```\s*$", "", text)
     return json.loads(text.strip())
 
-# Generate profiles
+def parse_retry_delay_seconds(err_text: str) -> int:
+    # Tries to extract: retry_delay { seconds: 47 }
+    import re
+    m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
+    return int(m.group(1)) if m else 0
+
+def chunk_df(df, size: int):
+    for start in range(0, len(df), size):
+        yield df.iloc[start:start+size]
+
+if "campaign_intent_profile_df" not in st.session_state:
+    st.session_state["campaign_intent_profile_df"] = None
+if "campaign_intent_profiles_json" not in st.session_state:
+    st.session_state["campaign_intent_profiles_json"] = None
+
+# Generate profiles (rate-limit safe)
 if gen_campaign_profile_btn:
     try:
+        import time
+        import random
         import google.generativeai as genai
+
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model = genai.GenerativeModel(model_name)
 
-        results_rows = []
-        profiles_json = []
+        # Throttle: enforce minimum interval between requests
+        min_interval = 60.0 / float(rpm_limit)  # seconds/request
 
-        with st.spinner("🤖 Generating intent profiles for campaigns..."):
-            progress = st.progress(0)
-            total = len(campaigns_df)
+        # Resume support
+        existing_rows = []
+        existing_profiles = []
+        if st.session_state["campaign_intent_profile_df"] is not None:
+            existing_rows = st.session_state["campaign_intent_profile_df"].to_dict("records")
+        if st.session_state["campaign_intent_profiles_json"] is not None:
+            existing_profiles = list(st.session_state["campaign_intent_profiles_json"])
 
-            for i, row in campaigns_df.iterrows():
-                campaign_id = str(row["campaign_id"])
-                campaign_name = str(row["campaign_name"])
-                campaign_brief = str(row["campaign_brief"])
+        already_done = set([p["campaign_id"] for p in existing_profiles if "campaign_id" in p])
 
-                lifestyle_note = ""
-                if include_lifestyle_context:
-                    # lightweight lifestyle context from ontology JSON if present
-                    ontology = st.session_state.get("ontology", {})
-                    ls_list = ontology.get("lifestyles", [])
-                    ls_names = [x.get("lifestyle_name", "") for x in ls_list][:15]
-                    lifestyle_note = f"\nLifestyle context (high-level): {', '.join([x for x in ls_names if x])}\n"
+        def call_llm_with_retry(prompt: str):
+            last_call = st.session_state.get("_last_llm_call_ts", 0.0)
 
-                prompt = f"""
-You are a marketing analyst. Your job is to map ONE campaign brief into a weighted intent profile.
+            # throttle BEFORE each call
+            now = time.time()
+            wait = (last_call + min_interval) - now
+            if wait > 0:
+                time.sleep(wait)
 
-Campaign:
-- campaign_id: {campaign_id}
-- campaign_name: {campaign_name}
-- campaign_brief: {campaign_brief}
-{lifestyle_note}
+            for attempt in range(int(max_retries) + 1):
+                try:
+                    resp = model.generate_content(prompt)
+                    st.session_state["_last_llm_call_ts"] = time.time()
+                    return resp.text
+                except Exception as e:
+                    msg = str(e)
+                    # If it's a quota/rate limit, sleep and retry
+                    if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
+                        retry_s = parse_retry_delay_seconds(msg)
+                        # If API provides retry_delay, use it; otherwise exponential backoff
+                        if retry_s <= 0:
+                            retry_s = int(min(60, (2 ** attempt) * 5))
+                        # add small jitter to avoid sync bursts
+                        retry_s = retry_s + random.randint(1, 3)
+
+                        st.warning(f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... (attempt {attempt+1}/{int(max_retries)+1})")
+                        time.sleep(retry_s)
+                        continue
+                    # other errors: raise
+                    raise
+
+            raise RuntimeError("Exceeded retry attempts due to rate limiting.")
+
+        # Prompt lifestyle context (small)
+        lifestyle_note = ""
+        if include_lifestyle_context:
+            ontology = st.session_state.get("ontology", {})
+            ls_list = ontology.get("lifestyles", [])
+            ls_names = [x.get("lifestyle_name", "") for x in ls_list][:12]
+            lifestyle_note = f"\nLifestyle context (high-level): {', '.join([x for x in ls_names if x])}\n"
+
+        results_rows = list(existing_rows)
+        profiles_json = list(existing_profiles)
+
+        todo_df = campaigns_df[~campaigns_df["campaign_id"].astype(str).isin(already_done)].reset_index(drop=True)
+
+        if len(todo_df) == 0:
+            st.info("✅ All campaigns already have intent profiles in session_state.")
+        else:
+            with st.spinner("🤖 Generating intent profiles (batched + throttled)..."):
+                progress = st.progress(0)
+                total_batches = (len(todo_df) + int(batch_size) - 1) // int(batch_size)
+
+                for b_idx, batch in enumerate(chunk_df(todo_df, int(batch_size))):
+                    # Prepare a compact list of campaigns for one call
+                    batch_campaigns = []
+                    for _, r in batch.iterrows():
+                        batch_campaigns.append({
+                            "campaign_id": str(r["campaign_id"]),
+                            "campaign_name": str(r["campaign_name"]),
+                            "campaign_brief": str(r["campaign_brief"]),
+                        })
+
+                    prompt = f"""
+You are a marketing analyst. Map EACH campaign brief into a weighted intent profile.
 
 You MUST choose intents ONLY from this intent list (do not invent new intents):
 {intent_snippet}
 
-Task:
+{lifestyle_note}
+
+Input campaigns (JSON):
+{json.dumps(batch_campaigns, ensure_ascii=False)}
+
+Task for EACH campaign:
 1) Select the TOP {top_n} intents most relevant to the campaign brief.
 2) For each selected intent, provide:
    - intent_id
    - intent_name
    - rationale (1–2 sentences, grounded in the brief)
-   - weight (a positive number; does NOT need to sum to 1 yet)
-3) Ensure variety: do not select near-duplicates if there are broader alternatives.
-4) Output language for rationales: {output_language}
+   - weight (positive number; does NOT need to sum to 1 yet)
+3) Output language for rationales: {output_language}
 
 Return STRICT minified JSON only:
 {{
-  "campaign_id":"{campaign_id}",
-  "campaign_name":"{campaign_name}",
-  "top_intents":[
+  "campaign_profiles":[
     {{
-      "intent_id":"IN_...",
-      "intent_name":"...",
-      "weight":0.0,
-      "rationale":"..."
+      "campaign_id":"...",
+      "campaign_name":"...",
+      "top_intents":[
+        {{
+          "intent_id":"IN_...",
+          "intent_name":"...",
+          "weight":0.0,
+          "rationale":"..."
+        }}
+      ]
     }}
   ]
 }}
 """.strip()
 
-                resp = model.generate_content(prompt)
-                data = extract_json_from_text(resp.text)
+                    raw = call_llm_with_retry(prompt)
+                    data = extract_json_from_text(raw)
+                    campaign_profiles = data.get("campaign_profiles", [])
 
-                top_intents = data.get("top_intents", [])
-                # Normalize weights to sum=1
-                top_intents = normalize_weights(top_intents)
+                    # Normalize and store
+                    for cp in campaign_profiles:
+                        cid = str(cp.get("campaign_id", "")).strip()
+                        cname = str(cp.get("campaign_name", "")).strip()
+                        top_intents_list = cp.get("top_intents", []) or []
+                        top_intents_list = normalize_weights(top_intents_list)
 
-                # Build rows for table
-                for rank, it in enumerate(top_intents, start=1):
-                    results_rows.append({
-                        "campaign_id": campaign_id,
-                        "campaign_name": campaign_name,
-                        "rank": rank,
-                        "intent_id": it.get("intent_id", ""),
-                        "intent_name": it.get("intent_name", ""),
-                        "weight": it.get("weight", 0.0),
-                        "rationale": it.get("rationale", ""),
-                    })
+                        # tabular rows
+                        for rank, it in enumerate(top_intents_list, start=1):
+                            results_rows.append({
+                                "campaign_id": cid,
+                                "campaign_name": cname,
+                                "rank": rank,
+                                "intent_id": it.get("intent_id", ""),
+                                "intent_name": it.get("intent_name", ""),
+                                "weight": it.get("weight", 0.0),
+                                "rationale": it.get("rationale", ""),
+                            })
 
-                profiles_json.append({
-                    "campaign_id": campaign_id,
-                    "campaign_name": campaign_name,
-                    "top_intents": top_intents
-                })
+                        profiles_json.append({
+                            "campaign_id": cid,
+                            "campaign_name": cname,
+                            "top_intents": top_intents_list
+                        })
 
-                progress.progress((i + 1) / max(total, 1))
+                    # Update progress
+                    progress.progress((b_idx + 1) / max(total_batches, 1))
 
-        campaign_intent_profile_df = pd.DataFrame(results_rows)
-        st.session_state["campaign_intent_profile_df"] = campaign_intent_profile_df
+                    # Persist after every batch so you can resume even if quota hits later
+                    st.session_state["campaign_intent_profile_df"] = pd.DataFrame(results_rows)
+                    st.session_state["campaign_intent_profiles_json"] = profiles_json
+
+            st.success("✅ Campaign intent profiles generated (weights normalized to sum = 1).")
+
+        # Final store
+        st.session_state["campaign_intent_profile_df"] = pd.DataFrame(results_rows)
         st.session_state["campaign_intent_profiles_json"] = profiles_json
-
-        st.success("✅ Campaign intent profiles generated (weights normalized to sum = 1).")
 
     except ImportError:
         st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
@@ -744,7 +829,7 @@ Return STRICT minified JSON only:
         st.exception(e)
 
 # Display outputs
-if "campaign_intent_profile_df" in st.session_state:
+if st.session_state.get("campaign_intent_profile_df") is not None:
     st.subheader("📌 Campaign Intent Profiles (Preview)")
     df = st.session_state["campaign_intent_profile_df"]
     st.dataframe(df, use_container_width=True, height=420)
@@ -757,7 +842,7 @@ if "campaign_intent_profile_df" in st.session_state:
         use_container_width=True
     )
 
-if "campaign_intent_profiles_json" in st.session_state:
+if st.session_state.get("campaign_intent_profiles_json") is not None:
     st.subheader("📦 Campaign Intent Profiles (JSON)")
     st.json(st.session_state["campaign_intent_profiles_json"])
     st.download_button(
@@ -767,7 +852,6 @@ if "campaign_intent_profiles_json" in st.session_state:
         mime="application/json",
         use_container_width=True
     )
-
 
 
 # ============================================================================
