@@ -2,10 +2,16 @@ import streamlit as st
 import pandas as pd
 import json
 
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
 st.set_page_config(page_title="Semantic Audience Studio", page_icon="🧠", layout="wide")
 st.title("🧠 Semantic Audience Studio (Prototype)")
 
-# ===== STEP 0: Campaign Input =====
+
+# ============================================================================
+# STEP 0: CAMPAIGN INPUT
+# ============================================================================
 st.header("Step 0: Campaign Input")
 st.caption("CSV upload or JSON paste")
 
@@ -65,11 +71,15 @@ else:
 
 st.divider()
 
-# ===== STEP 1: Upload Product & Transaction Tables =====
+
+# ============================================================================
+# STEP 1: PRODUCT & TRANSACTION DATA UPLOAD
+# ============================================================================
 st.header("Step 1: Upload Product & Transaction Data")
 
 col1, col2 = st.columns(2)
 
+# --- PRODUCT TABLE UPLOAD ---
 with col1:
     st.subheader("📦 Product Table")
     st.caption("Required columns: product_id, product_title, product_description")
@@ -114,6 +124,7 @@ with col1:
         except Exception as e:
             st.error(f"Error reading product CSV: {e}")
 
+# --- TRANSACTION TABLE UPLOAD ---
 with col2:
     st.subheader("🛒 Transaction Table")
     st.caption("Required columns: tx_id, customer_id, product_id, tx_date, qty, price")
@@ -154,7 +165,10 @@ with col2:
 
 st.divider()
 
-# ===== Data Summary =====
+
+# ============================================================================
+# DATA SUMMARY & ANALYTICS
+# ============================================================================
 if "catalog_df" in st.session_state and "txn_df" in st.session_state:
     catalog_df = st.session_state["catalog_df"]
     txn_df = st.session_state["txn_df"]
@@ -163,6 +177,7 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
     
     tab1, tab2, tab3 = st.tabs(["📦 Products", "🛒 Transactions", "📈 Analytics"])
     
+    # --- PRODUCTS TAB ---
     with tab1:
         st.subheader("Product Catalog")
         
@@ -176,7 +191,6 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
         
         st.dataframe(catalog_df, use_container_width=True, height=400)
         
-        # Download button
         st.download_button(
             "📥 Download Processed Product Data",
             data=catalog_df.to_csv(index=False).encode("utf-8"),
@@ -184,6 +198,7 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
             mime="text/csv"
         )
     
+    # --- TRANSACTIONS TAB ---
     with tab2:
         st.subheader("Transaction History")
         
@@ -202,7 +217,6 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
         
         st.dataframe(txn_df, use_container_width=True, height=400)
         
-        # Download button
         st.download_button(
             "📥 Download Processed Transaction Data",
             data=txn_df.to_csv(index=False).encode("utf-8"),
@@ -210,6 +224,7 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
             mime="text/csv"
         )
     
+    # --- ANALYTICS TAB ---
     with tab3:
         st.subheader("Quick Analytics")
         
@@ -246,3 +261,147 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
         
 else:
     st.info("👆 Upload both Product and Transaction CSV files to see the data summary.")
+
+st.divider()
+
+
+# ============================================================================
+# STEP 2: ONTOLOGY GENERATION (OPTIONAL)
+# ============================================================================
+st.header("Step 2: Generate Ontology & Dimensions (Optional)")
+
+if "catalog_df" in st.session_state:
+    catalog_df = st.session_state["catalog_df"]
+    
+    col1, col2 = st.columns([2, 1])
+    
+    # --- ONTOLOGY CONFIGURATION ---
+    with col1:
+        st.subheader("Configuration")
+        
+        st.write("**Ontology Settings**")
+        ontology_name = st.text_input("Ontology Name", value="Product Ontology v1")
+        ontology_version = st.text_input("Version", value="1.0")
+        
+        st.write("**Lifestyle Dimensions**")
+        lifestyle_input = st.text_area(
+            "Enter lifestyle categories (one per line)",
+            value="Health & Wellness\nHome & Living\nFashion & Beauty\nFood & Beverage\nTechnology\nSports & Fitness",
+            height=150
+        )
+        
+        st.write("**Intent Dimensions**")
+        intent_input = st.text_area(
+            "Enter intent categories (one per line)",
+            value="Gift Giving\nSelf Care\nHome Improvement\nDaily Essentials\nSpecial Occasions\nExploration",
+            height=150
+        )
+    
+    # --- GENERATION ACTIONS ---
+    with col2:
+        st.subheader("Actions")
+        
+        generate_btn = st.button("🔨 Generate Ontology", type="primary", use_container_width=True)
+        
+        st.info("This will create:\n- Ontology JSON\n- Lifestyle CSV\n- Intent CSV")
+    
+    # --- GENERATE ONTOLOGY ---
+    if generate_btn:
+        lifestyle_categories = [line.strip() for line in lifestyle_input.split("\n") if line.strip()]
+        intent_categories = [line.strip() for line in intent_input.split("\n") if line.strip()]
+        
+        with st.spinner("Generating ontology and dimensions..."):
+            
+            # Create ontology structure
+            ontology = {
+                "name": ontology_name,
+                "version": ontology_version,
+                "created_at": pd.Timestamp.now().isoformat(),
+                "total_products": len(catalog_df),
+                "lifestyle_dimensions": lifestyle_categories,
+                "intent_dimensions": intent_categories,
+                "metadata": {
+                    "description": "Auto-generated product ontology",
+                    "source": "product_catalog"
+                }
+            }
+            
+            # Create lifestyle dimension table
+            lifestyle_data = []
+            for idx, category in enumerate(lifestyle_categories, 1):
+                lifestyle_data.append({
+                    "lifestyle_id": f"LIFE_{idx:03d}",
+                    "lifestyle_name": category,
+                    "lifestyle_description": f"Products related to {category.lower()}",
+                    "product_count": 0
+                })
+            
+            dim_lifestyle_df = pd.DataFrame(lifestyle_data)
+            
+            # Create intent dimension table
+            intent_data = []
+            for idx, category in enumerate(intent_categories, 1):
+                intent_data.append({
+                    "intent_id": f"INT_{idx:03d}",
+                    "intent_name": category,
+                    "intent_description": f"Products for {category.lower()} purposes",
+                    "product_count": 0
+                })
+            
+            dim_intent_df = pd.DataFrame(intent_data)
+            
+            # Store in session state
+            st.session_state["ontology"] = ontology
+            st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+            st.session_state["dim_intent_df"] = dim_intent_df
+            
+            st.success("✅ Ontology generated successfully!")
+    
+    # --- DISPLAY & DOWNLOAD ONTOLOGY ---
+    if "ontology" in st.session_state:
+        st.divider()
+        st.subheader("📥 Download Ontology Files")
+        
+        ontology = st.session_state["ontology"]
+        dim_lifestyle_df = st.session_state["dim_lifestyle_df"]
+        dim_intent_df = st.session_state["dim_intent_df"]
+        
+        tab1, tab2, tab3 = st.tabs(["📋 Ontology JSON", "🎨 Lifestyle Dimensions", "🎯 Intent Dimensions"])
+        
+        with tab1:
+            st.json(ontology)
+            st.download_button(
+                label="📥 Download ontology_v1.json",
+                data=json.dumps(ontology, ensure_ascii=False, indent=2),
+                file_name="ontology_v1.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        
+        with tab2:
+            st.dataframe(dim_lifestyle_df, use_container_width=True)
+            st.download_button(
+                label="📥 Download dim_lifestyle_v1.csv",
+                data=dim_lifestyle_df.to_csv(index=False).encode("utf-8"),
+                file_name="dim_lifestyle_v1.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        with tab3:
+            st.dataframe(dim_intent_df, use_container_width=True)
+            st.download_button(
+                label="📥 Download dim_intent_v1.csv",
+                data=dim_intent_df.to_csv(index=False).encode("utf-8"),
+                file_name="dim_intent_v1.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+else:
+    st.info("👆 Upload Product CSV in Step 1 to enable ontology generation.")
+
+
+# ============================================================================
+# END OF APP
+# ============================================================================
