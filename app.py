@@ -100,10 +100,10 @@ with col1:
                 
                 catalog_df = (
                     product_df[["product_id", "product_title", "product_text"]]
-                    .rename(columns={"product_title": "product_name"})
                     .drop_duplicates(subset=["product_id"])
                     .reset_index(drop=True)
                 )
+                catalog_df["product_name"] = catalog_df["product_title"]
                 
                 st.session_state["catalog_df"] = catalog_df
                 st.success(f"✅ Loaded {len(catalog_df)} products")
