@@ -19,108 +19,13 @@ input_mode = st.radio("Choose input mode", ["Paste JSON", "Upload CSV"], horizon
 campaigns_df = None
 
 if input_mode == "Paste JSON":
-    default_json =[
-  {
-    "campaign_id": "CAMP_VALENTINES",
-    "campaign_name": "Valentine’s Day",
-    "campaign_brief": "Romantic gifting + date-night bundles: fragrance, chocolates, candles, dinner-at-home, self-care sets."
-  },
-  {
-    "campaign_id": "CAMP_MOTHERSDAY",
-    "campaign_name": "Mother’s Day",
-    "campaign_brief": "Gifts for moms/parents + care & comfort: home items, personal care, gratitude-themed premium gifts."
-  },
-  {
-    "campaign_id": "CAMP_FATHERSDAY",
-    "campaign_name": "Father’s Day",
-    "campaign_brief": "Gifts for dads/men + practical utility: grooming kits, tech accessories, hobby-related items."
-  },
-  {
-    "campaign_id": "CAMP_GRAD",
-    "campaign_name": "Graduation Season",
-    "campaign_brief": "Congrats gifting + career transition: productivity tech, professional bags, style essentials, keepsakes."
-  },
-  {
-    "campaign_id": "CAMP_WEDDING",
-    "campaign_name": "Wedding Season",
-    "campaign_brief": "Wedding gifting + home setup: premium bundles, couple-focused gifts, celebration essentials."
-  },
-  {
-    "campaign_id": "CAMP_LUNAR_NEWYEAR",
-    "campaign_name": "Lunar New Year",
-    "campaign_brief": "Family reunion + home hosting: auspicious gifting, home refresh items, festive celebration supplies."
-  },
-  {
-    "campaign_id": "CAMP_RAMADAN_EID",
-    "campaign_name": "Ramadan & Eid",
-    "campaign_brief": "Family gatherings + culturally sensitive hosting: food prep, personal care, Eid gifting traditions."
-  },
-  {
-    "campaign_id": "CAMP_DIWALI",
-    "campaign_name": "Diwali",
-    "campaign_brief": "Festive home decoration + family celebration: lights, new outfits, gifting, traditional home items."
-  },
-  {
-    "campaign_id": "CAMP_EASTER",
-    "campaign_name": "Easter",
-    "campaign_brief": "Family gathering + spring refresh: home decor, seasonal sweets, small gift bundles."
-  },
-  {
-    "campaign_id": "CAMP_HALLOWEEN",
-    "campaign_name": "Halloween",
-    "campaign_brief": "Costumes + party hosting: festive decorations, themed items, treats and confectionery."
-  },
-  {
-    "campaign_id": "CAMP_THANKSGIVING",
-    "campaign_name": "Thanksgiving",
-    "campaign_brief": "Hosting meals + kitchen prep: home warmth and comfort, family gathering essentials."
-  },
-  {
-    "campaign_id": "CAMP_BACKTOSCHOOL",
-    "campaign_name": "Back to School",
-    "campaign_brief": "Kids school needs + study productivity: stationery, bags, learning gadgets, organizational tools."
-  },
-  {
-    "campaign_id": "CAMP_SUMMERTRAVEL",
-    "campaign_name": "Summer Travel / Vacation",
-    "campaign_brief": "Travel prep + outdoor essentials: sun protection, beach gear, lightweight packing sets."
-  },
-  {
-    "campaign_id": "CAMP_WINTERWARM",
-    "campaign_name": "Winter Warm-Up",
-    "campaign_brief": "Cold-season wellness + cozy home: warm clothing, protective gear, wellness and comfort items."
-  },
-  {
-    "campaign_id": "CAMP_SPRINGCLEAN",
-    "campaign_name": "Spring Cleaning / Home Refresh",
-    "campaign_brief": "Home improvement + organization: cleaning supplies, storage solutions, decluttering tools."
-  },
-  {
-    "campaign_id": "CAMP_BFCM",
-    "campaign_name": "Black Friday / Cyber Monday",
-    "campaign_brief": "Deep deals + category upgrades: online shopping peak, high-value tech, stock-up bundles."
-  },
-  {
-    "campaign_id": "CAMP_PRIMEDAY",
-    "campaign_name": "Prime Day (Deal Event)",
-    "campaign_brief": "Mid-year festival + home essentials: tech upgrades, impulse buys, high-discount favorites."
-  },
-  {
-    "campaign_id": "CAMP_1111",
-    "campaign_name": "Singles’ Day (11.11)",
-    "campaign_brief": "Self-reward + gift stock-up: big online deals, personal upgrades, bundled promotions."
-  },
-  {
-    "campaign_id": "CAMP_618",
-    "campaign_name": "618 Mid-Year Festival",
-    "campaign_brief": "Mid-year platform sale + stock-up: category promotions, hardware upgrades, volume deals."
-  },
-  {
-    "campaign_id": "CAMP_CHRISTMAS",
-    "campaign_name": "Christmas / Year-End Holidays",
-    "campaign_brief": "Gift-giving + festive hosting: home decor, family celebration sets, premium style gifts."
-  }
-]
+    default_json = [
+        {
+            "campaign_id": "CAMP_VALENTINES",
+            "campaign_name": "Valentine's Day",
+            "campaign_brief": "Romantic gifting + date-night bundles: fragrance, chocolates, candles, dinner-at-home, self-care sets."
+        }
+    ]
     json_text = st.text_area(
         "Paste campaign JSON (one campaign object or a list of objects)",
         value=json.dumps(default_json, indent=2),
@@ -358,96 +263,232 @@ st.divider()
 
 
 # ============================================================================
-# STEP 2: ONTOLOGY GENERATION (OPTIONAL)
+# STEP 2: AI-POWERED ONTOLOGY GENERATION
 # ============================================================================
-st.header("Step 2: Generate Ontology & Dimensions (Optional)")
+st.header("Step 2: AI-Powered Ontology Generation")
 
 if "catalog_df" in st.session_state:
     catalog_df = st.session_state["catalog_df"]
     
-    col1, col2 = st.columns([2, 1])
+    # --- API KEY CONFIGURATION ---
+    st.subheader("🔑 API Configuration")
+    
+    # Check for API key in secrets or input
+    gemini_api_key = None
+    if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+        gemini_api_key = st.secrets['GEMINI_API_KEY']
+        st.success("✅ Gemini API key loaded from secrets")
+    else:
+        gemini_api_key = st.text_input(
+            "Enter your Gemini API Key",
+            type="password",
+            help="Get your API key from https://aistudio.google.com/apikey"
+        )
+        if gemini_api_key:
+            st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
+    
+    if not gemini_api_key:
+        st.warning("⚠️ Please provide a Gemini API key to generate ontology")
+        st.info("Get your free API key at: https://aistudio.google.com/apikey")
+        st.stop()
+    
+    st.divider()
     
     # --- ONTOLOGY CONFIGURATION ---
+    col1, col2 = st.columns([2, 1])
+    
     with col1:
         st.subheader("Configuration")
         
         st.write("**Ontology Settings**")
-        ontology_name = st.text_input("Ontology Name", value="Product Ontology v1")
-        ontology_version = st.text_input("Version", value="1.0")
-        
-        st.write("**Lifestyle Dimensions**")
-        lifestyle_input = st.text_area(
-            "Enter lifestyle categories (one per line)",
-            value="Health & Wellness\nHome & Living\nFashion & Beauty\nFood & Beverage\nTechnology\nSports & Fitness",
-            height=150
-        )
-        
-        st.write("**Intent Dimensions**")
-        intent_input = st.text_area(
-            "Enter intent categories (one per line)",
-            value="Gift Giving\nSelf Care\nHome Improvement\nDaily Essentials\nSpecial Occasions\nExploration",
-            height=150
-        )
+        n_lifestyles = st.number_input("Number of Lifestyle Categories", min_value=3, max_value=15, value=6)
+        max_intents_per_lifestyle = st.number_input("Max Intents per Lifestyle", min_value=2, max_value=10, value=5)
+        chunk_size = st.number_input("Chunk Size (products per API call)", min_value=20, max_value=100, value=40)
+        language = st.selectbox("Output Language", ["en", "th", "zh", "ja", "es", "fr"])
     
-    # --- GENERATION ACTIONS ---
     with col2:
         st.subheader("Actions")
         
-        generate_btn = st.button("🔨 Generate Ontology", type="primary", use_container_width=True)
+        generate_btn = st.button("🤖 Generate with AI", type="primary", use_container_width=True)
         
-        st.info("This will create:\n- Ontology JSON\n- Lifestyle CSV\n- Intent CSV")
+        st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
     
-    # --- GENERATE ONTOLOGY ---
+    # --- GENERATE ONTOLOGY WITH AI ---
     if generate_btn:
-        lifestyle_categories = [line.strip() for line in lifestyle_input.split("\n") if line.strip()]
-        intent_categories = [line.strip() for line in intent_input.split("\n") if line.strip()]
-        
-        with st.spinner("Generating ontology and dimensions..."):
+        try:
+            import google.generativeai as genai
+            import re
             
-            # Create ontology structure
-            ontology = {
-                "name": ontology_name,
-                "version": ontology_version,
-                "created_at": pd.Timestamp.now().isoformat(),
-                "total_products": len(catalog_df),
-                "lifestyle_dimensions": lifestyle_categories,
-                "intent_dimensions": intent_categories,
-                "metadata": {
-                    "description": "Auto-generated product ontology",
-                    "source": "product_catalog"
+            # Configure Gemini
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            
+            # Helper function to extract JSON
+            def extract_json_from_text(text: str) -> dict:
+                text = text.strip()
+                if text.startswith("```"):
+                    lines = text.split("\n")
+                    text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+                text = re.sub(r"^```json\s*", "", text)
+                text = re.sub(r"```\s*$", "", text)
+                return json.loads(text.strip())
+            
+            all_product_texts = catalog_df["product_text"].tolist()
+            
+            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size}..."):
+                
+                # Step 1: Create chunk-level proposals
+                chunk_outputs = []
+                progress_bar = st.progress(0)
+                total_chunks = (len(all_product_texts) + chunk_size - 1) // chunk_size
+                
+                for idx, start in enumerate(range(0, len(all_product_texts), chunk_size)):
+                    chunk = all_product_texts[start:start+chunk_size]
+                    examples = "\n".join([f"- {t[:240]}" for t in chunk])
+                    
+                    prompt = f"""
+You are proposing a Lifestyle→Intent ontology for retail marketing.
+
+Input: Product catalog examples (titles + descriptions):
+{examples}
+
+Task:
+- Propose Lifestyle parents and Intents under each.
+- Each Intent must include:
+  intent_id (snake_case), intent_name (2–5 words), definition (1 sentence),
+  include_examples (2–3), exclude_examples (1–2).
+- Output language: {language}
+
+Return STRICT minified JSON:
+{{
+  "lifestyles":[
+    {{
+      "lifestyle_name":"...",
+      "definition":"...",
+      "intents":[
+        {{
+          "intent_name":"...",
+          "definition":"...",
+          "include_examples":["..."],
+          "exclude_examples":["..."]
+        }}
+      ]
+    }}
+  ]
+}}
+""".strip()
+                    
+                    resp = model.generate_content(prompt)
+                    chunk_outputs.append(extract_json_from_text(resp.text))
+                    progress_bar.progress((idx + 1) / total_chunks)
+                
+                st.success(f"✅ Analyzed {total_chunks} chunks")
+            
+            with st.spinner("🔄 Consolidating ontology..."):
+                
+                # Step 2: Merge chunk proposals
+                pool = {}
+                for obj in chunk_outputs:
+                    for ls in obj.get("lifestyles", []):
+                        ls_name = ls.get("lifestyle_name", "").strip()
+                        if not ls_name:
+                            continue
+                        pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
+                        pool[ls_name]["intents"].extend(ls.get("intents", []))
+                
+                # Step 3: Ask Gemini to consolidate
+                pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
+                
+                prompt2 = f"""
+You are consolidating multiple ontology proposals into ONE final ontology.
+
+Input pool (may contain duplicates/overlaps):
+{pool_text}
+
+Task:
+1) Produce EXACTLY {n_lifestyles} Lifestyle parents.
+2) Under each, produce up to {max_intents_per_lifestyle} Intents.
+3) Remove duplicates, merge similar intents, ensure MECE as much as possible.
+4) Create unique IDs:
+   - lifestyle_id: LS_...
+   - intent_id: IN_...
+5) Keep include/exclude examples concise.
+
+Return STRICT minified JSON:
+{{
+  "lifestyles":[
+    {{
+      "lifestyle_id":"LS_...",
+      "lifestyle_name":"...",
+      "definition":"...",
+      "intents":[
+        {{
+          "intent_id":"IN_...",
+          "intent_name":"...",
+          "definition":"...",
+          "include_examples":["..."],
+          "exclude_examples":["..."]
+        }}
+      ]
+    }}
+  ]
+}}
+""".strip()
+                
+                final = model.generate_content(prompt2)
+                ontology_data = extract_json_from_text(final.text)
+                
+                # Flatten into DataFrames
+                dim_lifestyle_rows, dim_intent_rows = [], []
+                for ls in ontology_data.get("lifestyles", []):
+                    dim_lifestyle_rows.append({
+                        "lifestyle_id": ls["lifestyle_id"],
+                        "lifestyle_name": ls["lifestyle_name"],
+                        "definition": ls.get("definition", ""),
+                        "version": "v1"
+                    })
+                    for it in ls.get("intents", []):
+                        dim_intent_rows.append({
+                            "intent_id": it["intent_id"],
+                            "intent_name": it["intent_name"],
+                            "definition": it.get("definition", ""),
+                            "lifestyle_id": ls["lifestyle_id"],
+                            "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
+                            "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                            "version": "v1"
+                        })
+                
+                dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
+                dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
+                
+                # Create full ontology object
+                ontology = {
+                    "name": "AI-Generated Product Ontology",
+                    "version": "v1",
+                    "created_at": pd.Timestamp.now().isoformat(),
+                    "total_products": len(catalog_df),
+                    "model": "gemini-2.0-flash-exp",
+                    "language": language,
+                    "lifestyles": ontology_data.get("lifestyles", []),
+                    "metadata": {
+                        "description": "AI-generated ontology from product catalog",
+                        "n_lifestyles": len(dim_lifestyle_df),
+                        "n_intents": len(dim_intent_df)
+                    }
                 }
-            }
-            
-            # Create lifestyle dimension table
-            lifestyle_data = []
-            for idx, category in enumerate(lifestyle_categories, 1):
-                lifestyle_data.append({
-                    "lifestyle_id": f"LIFE_{idx:03d}",
-                    "lifestyle_name": category,
-                    "lifestyle_description": f"Products related to {category.lower()}",
-                    "product_count": 0
-                })
-            
-            dim_lifestyle_df = pd.DataFrame(lifestyle_data)
-            
-            # Create intent dimension table
-            intent_data = []
-            for idx, category in enumerate(intent_categories, 1):
-                intent_data.append({
-                    "intent_id": f"INT_{idx:03d}",
-                    "intent_name": category,
-                    "intent_description": f"Products for {category.lower()} purposes",
-                    "product_count": 0
-                })
-            
-            dim_intent_df = pd.DataFrame(intent_data)
-            
-            # Store in session state
-            st.session_state["ontology"] = ontology
-            st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
-            st.session_state["dim_intent_df"] = dim_intent_df
-            
-            st.success("✅ Ontology generated successfully!")
+                
+                # Store in session state
+                st.session_state["ontology"] = ontology
+                st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+                st.session_state["dim_intent_df"] = dim_intent_df
+                
+                st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
+        
+        except ImportError:
+            st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+        except Exception as e:
+            st.error(f"❌ Error generating ontology: {str(e)}")
+            st.exception(e)
     
     # --- DISPLAY & DOWNLOAD ONTOLOGY ---
     if "ontology" in st.session_state:
