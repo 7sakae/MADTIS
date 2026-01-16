@@ -3,3 +3,4 @@ pandas
 plotly
 google-cloud-bigquery
 google-auth
+google-generativeai
