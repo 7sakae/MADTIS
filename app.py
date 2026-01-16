@@ -20,12 +20,107 @@ campaigns_df = None
 
 if input_mode == "Paste JSON":
     default_json = [
-        {
-            "campaign_id": "CAMP_VALENTINES",
-            "campaign_name": "Valentine's Day",
-            "campaign_brief": "Romantic gifting + date-night bundles: fragrance, chocolates, candles, dinner-at-home, self-care sets."
-        }
-    ]
+  {
+    "campaign_id": "CAMP_VALENTINES",
+    "campaign_name": "Valentine’s Day",
+    "campaign_brief": "Romantic gifting + date-night bundles: fragrance, chocolates, candles, dinner-at-home, self-care sets."
+  },
+  {
+    "campaign_id": "CAMP_MOTHERSDAY",
+    "campaign_name": "Mother’s Day",
+    "campaign_brief": "Gifts for moms/parents + care & comfort: home items, personal care, gratitude-themed premium gifts."
+  },
+  {
+    "campaign_id": "CAMP_FATHERSDAY",
+    "campaign_name": "Father’s Day",
+    "campaign_brief": "Gifts for dads/men + practical utility: grooming kits, tech accessories, hobby-related items."
+  },
+  {
+    "campaign_id": "CAMP_GRAD",
+    "campaign_name": "Graduation Season",
+    "campaign_brief": "Congrats gifting + career transition: productivity tech, professional bags, style essentials, keepsakes."
+  },
+  {
+    "campaign_id": "CAMP_WEDDING",
+    "campaign_name": "Wedding Season",
+    "campaign_brief": "Wedding gifting + home setup: premium bundles, couple-focused gifts, celebration essentials."
+  },
+  {
+    "campaign_id": "CAMP_LUNAR_NEWYEAR",
+    "campaign_name": "Lunar New Year",
+    "campaign_brief": "Family reunion + home hosting: auspicious gifting, home refresh items, festive celebration supplies."
+  },
+  {
+    "campaign_id": "CAMP_RAMADAN_EID",
+    "campaign_name": "Ramadan & Eid",
+    "campaign_brief": "Family gatherings + culturally sensitive hosting: food prep, personal care, Eid gifting traditions."
+  },
+  {
+    "campaign_id": "CAMP_DIWALI",
+    "campaign_name": "Diwali",
+    "campaign_brief": "Festive home decoration + family celebration: lights, new outfits, gifting, traditional home items."
+  },
+  {
+    "campaign_id": "CAMP_EASTER",
+    "campaign_name": "Easter",
+    "campaign_brief": "Family gathering + spring refresh: home decor, seasonal sweets, small gift bundles."
+  },
+  {
+    "campaign_id": "CAMP_HALLOWEEN",
+    "campaign_name": "Halloween",
+    "campaign_brief": "Costumes + party hosting: festive decorations, themed items, treats and confectionery."
+  },
+  {
+    "campaign_id": "CAMP_THANKSGIVING",
+    "campaign_name": "Thanksgiving",
+    "campaign_brief": "Hosting meals + kitchen prep: home warmth and comfort, family gathering essentials."
+  },
+  {
+    "campaign_id": "CAMP_BACKTOSCHOOL",
+    "campaign_name": "Back to School",
+    "campaign_brief": "Kids school needs + study productivity: stationery, bags, learning gadgets, organizational tools."
+  },
+  {
+    "campaign_id": "CAMP_SUMMERTRAVEL",
+    "campaign_name": "Summer Travel / Vacation",
+    "campaign_brief": "Travel prep + outdoor essentials: sun protection, beach gear, lightweight packing sets."
+  },
+  {
+    "campaign_id": "CAMP_WINTERWARM",
+    "campaign_name": "Winter Warm-Up",
+    "campaign_brief": "Cold-season wellness + cozy home: warm clothing, protective gear, wellness and comfort items."
+  },
+  {
+    "campaign_id": "CAMP_SPRINGCLEAN",
+    "campaign_name": "Spring Cleaning / Home Refresh",
+    "campaign_brief": "Home improvement + organization: cleaning supplies, storage solutions, decluttering tools."
+  },
+  {
+    "campaign_id": "CAMP_BFCM",
+    "campaign_name": "Black Friday / Cyber Monday",
+    "campaign_brief": "Deep deals + category upgrades: online shopping peak, high-value tech, stock-up bundles."
+  },
+  {
+    "campaign_id": "CAMP_PRIMEDAY",
+    "campaign_name": "Prime Day (Deal Event)",
+    "campaign_brief": "Mid-year festival + home essentials: tech upgrades, impulse buys, high-discount favorites."
+  },
+  {
+    "campaign_id": "CAMP_1111",
+    "campaign_name": "Singles’ Day (11.11)",
+    "campaign_brief": "Self-reward + gift stock-up: big online deals, personal upgrades, bundled promotions."
+  },
+  {
+    "campaign_id": "CAMP_618",
+    "campaign_name": "618 Mid-Year Festival",
+    "campaign_brief": "Mid-year platform sale + stock-up: category promotions, hardware upgrades, volume deals."
+  },
+  {
+    "campaign_id": "CAMP_CHRISTMAS",
+    "campaign_name": "Christmas / Year-End Holidays",
+    "campaign_brief": "Gift-giving + festive hosting: home decor, family celebration sets, premium style gifts."
+  }
+]
     json_text = st.text_area(
         "Paste campaign JSON (one campaign object or a list of objects)",
         value=json.dumps(default_json, indent=2),
