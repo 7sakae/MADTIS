@@ -534,6 +534,241 @@ Return STRICT minified JSON:
 else:
     st.info("👆 Upload Product CSV in Step 1 to enable ontology generation.")
 
+# ============================================================================
+# STEP 3: CAMPAIGN BRIEF → WEIGHTED INTENT PROFILE (LLM)
+# - Select Top intents from the ontology
+# - Provide rationale
+# - Normalize weights to sum = 1
+# - Store in session_state (read-only demo: no DWH writes)
+# ============================================================================
+
+st.divider()
+st.header("Step 3: Campaign → Weighted Intent Profile (LLM)")
+st.caption("Use LLM to map each campaign brief to Top intents from the ontology, with normalized weights + rationale.")
+
+# Preconditions
+if "campaigns_df" not in st.session_state:
+    st.info("👆 Please load campaign input in Step 0 first.")
+    st.stop()
+
+if "ontology" not in st.session_state or "dim_intent_df" not in st.session_state:
+    st.info("👆 Please generate the ontology in Step 2 first.")
+    st.stop()
+
+campaigns_df = st.session_state["campaigns_df"].copy()
+dim_intent_df = st.session_state["dim_intent_df"].copy()
+
+# API key: reuse the key from Step 2 if available
+st.subheader("🔑 API Configuration")
+gemini_api_key = None
+if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+    gemini_api_key = st.secrets['GEMINI_API_KEY']
+    st.success("✅ Gemini API key loaded from secrets")
+else:
+    gemini_api_key = st.text_input(
+        "Enter your Gemini API Key",
+        type="password",
+        help="Get your API key from https://aistudio.google.com/apikey",
+        key="gemini_key_step3"
+    )
+
+if not gemini_api_key:
+    st.warning("⚠️ Please provide a Gemini API key to generate campaign intent profiles.")
+    st.stop()
+
+st.divider()
+
+# Controls
+left, right = st.columns([2, 1])
+
+with left:
+    st.subheader("Configuration")
+    top_n = st.number_input("Top intents per campaign", min_value=3, max_value=12, value=6)
+    output_language = st.selectbox("Output Language", ["en", "th"], index=0, key="campaign_intent_lang")
+    include_lifestyle_context = st.checkbox("Include lifestyle context in prompt", value=True)
+
+with right:
+    st.subheader("Actions")
+    gen_campaign_profile_btn = st.button("🤖 Generate Campaign Intent Profiles", type="primary", use_container_width=True)
+    st.info(f"Will process {len(campaigns_df)} campaign(s)")
+
+# Build intent candidates from ontology
+intent_candidates = []
+for _, r in dim_intent_df.iterrows():
+    intent_candidates.append({
+        "intent_id": str(r.get("intent_id", "")).strip(),
+        "intent_name": str(r.get("intent_name", "")).strip(),
+        "definition": str(r.get("definition", "")).strip(),
+        "lifestyle_id": str(r.get("lifestyle_id", "")).strip(),
+        "include_examples": r.get("include_examples", "[]"),
+        "exclude_examples": r.get("exclude_examples", "[]"),
+    })
+
+# Limit prompt size defensively (keep concise but useful)
+def _safe_intent_snippet(intent_list, max_chars=18000):
+    txt = json.dumps(intent_list, ensure_ascii=False)
+    return txt[:max_chars]
+
+intent_snippet = _safe_intent_snippet(intent_candidates)
+
+# Helpers
+def normalize_weights(items):
+    # items: list of dicts with "weight"
+    w = [float(x.get("weight", 0)) for x in items]
+    s = sum(w)
+    if s <= 0:
+        # fallback: equal weights
+        n = len(items)
+        for x in items:
+            x["weight"] = round(1.0 / max(n, 1), 4)
+        return items
+    for x in items:
+        x["weight"] = round(float(x.get("weight", 0)) / s, 4)
+    # fix rounding drift to make sum exactly 1.0
+    drift = round(1.0 - sum([x["weight"] for x in items]), 4)
+    if items:
+        items[0]["weight"] = round(items[0]["weight"] + drift, 4)
+    return items
+
+def extract_json_from_text(text: str) -> dict:
+    import re
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+    text = re.sub(r"^```json\s*", "", text)
+    text = re.sub(r"```\s*$", "", text)
+    return json.loads(text.strip())
+
+# Generate profiles
+if gen_campaign_profile_btn:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+
+        results_rows = []
+        profiles_json = []
+
+        with st.spinner("🤖 Generating intent profiles for campaigns..."):
+            progress = st.progress(0)
+            total = len(campaigns_df)
+
+            for i, row in campaigns_df.iterrows():
+                campaign_id = str(row["campaign_id"])
+                campaign_name = str(row["campaign_name"])
+                campaign_brief = str(row["campaign_brief"])
+
+                lifestyle_note = ""
+                if include_lifestyle_context:
+                    # lightweight lifestyle context from ontology JSON if present
+                    ontology = st.session_state.get("ontology", {})
+                    ls_list = ontology.get("lifestyles", [])
+                    ls_names = [x.get("lifestyle_name", "") for x in ls_list][:15]
+                    lifestyle_note = f"\nLifestyle context (high-level): {', '.join([x for x in ls_names if x])}\n"
+
+                prompt = f"""
+You are a marketing analyst. Your job is to map ONE campaign brief into a weighted intent profile.
+
+Campaign:
+- campaign_id: {campaign_id}
+- campaign_name: {campaign_name}
+- campaign_brief: {campaign_brief}
+{lifestyle_note}
+
+You MUST choose intents ONLY from this intent list (do not invent new intents):
+{intent_snippet}
+
+Task:
+1) Select the TOP {top_n} intents most relevant to the campaign brief.
+2) For each selected intent, provide:
+   - intent_id
+   - intent_name
+   - rationale (1–2 sentences, grounded in the brief)
+   - weight (a positive number; does NOT need to sum to 1 yet)
+3) Ensure variety: do not select near-duplicates if there are broader alternatives.
+4) Output language for rationales: {output_language}
+
+Return STRICT minified JSON only:
+{{
+  "campaign_id":"{campaign_id}",
+  "campaign_name":"{campaign_name}",
+  "top_intents":[
+    {{
+      "intent_id":"IN_...",
+      "intent_name":"...",
+      "weight":0.0,
+      "rationale":"..."
+    }}
+  ]
+}}
+""".strip()
+
+                resp = model.generate_content(prompt)
+                data = extract_json_from_text(resp.text)
+
+                top_intents = data.get("top_intents", [])
+                # Normalize weights to sum=1
+                top_intents = normalize_weights(top_intents)
+
+                # Build rows for table
+                for rank, it in enumerate(top_intents, start=1):
+                    results_rows.append({
+                        "campaign_id": campaign_id,
+                        "campaign_name": campaign_name,
+                        "rank": rank,
+                        "intent_id": it.get("intent_id", ""),
+                        "intent_name": it.get("intent_name", ""),
+                        "weight": it.get("weight", 0.0),
+                        "rationale": it.get("rationale", ""),
+                    })
+
+                profiles_json.append({
+                    "campaign_id": campaign_id,
+                    "campaign_name": campaign_name,
+                    "top_intents": top_intents
+                })
+
+                progress.progress((i + 1) / max(total, 1))
+
+        campaign_intent_profile_df = pd.DataFrame(results_rows)
+        st.session_state["campaign_intent_profile_df"] = campaign_intent_profile_df
+        st.session_state["campaign_intent_profiles_json"] = profiles_json
+
+        st.success("✅ Campaign intent profiles generated (weights normalized to sum = 1).")
+
+    except ImportError:
+        st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+    except Exception as e:
+        st.error(f"❌ Error generating campaign intent profiles: {str(e)}")
+        st.exception(e)
+
+# Display outputs
+if "campaign_intent_profile_df" in st.session_state:
+    st.subheader("📌 Campaign Intent Profiles (Preview)")
+    df = st.session_state["campaign_intent_profile_df"]
+    st.dataframe(df, use_container_width=True, height=420)
+
+    st.download_button(
+        "📥 Download campaign_intent_profile.csv",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name="campaign_intent_profile.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+if "campaign_intent_profiles_json" in st.session_state:
+    st.subheader("📦 Campaign Intent Profiles (JSON)")
+    st.json(st.session_state["campaign_intent_profiles_json"])
+    st.download_button(
+        "📥 Download campaign_intent_profiles.json",
+        data=json.dumps(st.session_state["campaign_intent_profiles_json"], ensure_ascii=False, indent=2),
+        file_name="campaign_intent_profiles.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+
 
 # ============================================================================
 # END OF APP
