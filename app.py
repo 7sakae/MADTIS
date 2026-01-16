@@ -1,15 +1,13 @@
 import streamlit as st
 import pandas as pd
 import json
-from google.cloud import bigquery
-from google.oauth2 import service_account
 
 st.set_page_config(page_title="Semantic Audience Studio", page_icon="🧠", layout="wide")
 st.title("🧠 Semantic Audience Studio (Prototype)")
 
 # ===== STEP 0: Campaign Input =====
 st.header("Step 0: Campaign Input")
-st.caption("CSV upload or JSON paste — read-only demo")
+st.caption("CSV upload or JSON paste")
 
 input_mode = st.radio("Choose input mode", ["Paste JSON", "Upload CSV"], horizontal=True)
 campaigns_df = None
@@ -27,7 +25,7 @@ if input_mode == "Paste JSON":
         value=json.dumps(default_json, indent=2),
         height=220
     )
-    if st.button("Load JSON", type="primary"):
+    if st.button("Load JSON", type="primary", key="load_campaign_json"):
         try:
             obj = json.loads(json_text)
             if isinstance(obj, dict):
@@ -39,7 +37,7 @@ if input_mode == "Paste JSON":
         except Exception as e:
             st.error(f"Invalid JSON: {e}")
 else:
-    uploaded = st.file_uploader("Upload a campaigns CSV", type=["csv"])
+    uploaded = st.file_uploader("Upload a campaigns CSV", type=["csv"], key="campaign_csv")
     if uploaded is not None:
         try:
             campaigns_df = pd.read_csv(uploaded)
@@ -67,139 +65,127 @@ else:
 
 st.divider()
 
-# ===== STEP 1: BigQuery Connection =====
-st.header("Step 1: Connect to BigQuery")
+# ===== STEP 1: Upload Product & Transaction Tables =====
+st.header("Step 1: Upload Product & Transaction Data")
 
-# BigQuery configuration in sidebar
-with st.sidebar:
-    st.subheader("⚙️ BigQuery Configuration")
-    
-    auth_method = st.radio(
-        "Authentication method",
-        ["Service Account JSON", "Default Credentials"],
-        help="Choose how to authenticate with BigQuery"
-    )
-    
-    if auth_method == "Service Account JSON":
-        credentials_json = st.text_area(
-            "Paste Service Account JSON",
-            height=150,
-            help="Paste your GCP service account JSON key here"
-        )
-    
-    project_id = st.text_input("Project ID", value="your-project-id")
-    product_table = st.text_input(
-        "Product Table", 
-        value="your-project.dataset.product_table",
-        help="Format: project.dataset.table"
-    )
-    transactions_table = st.text_input(
-        "Transactions Table", 
-        value="your-project.dataset.transactions_table",
-        help="Format: project.dataset.table"
-    )
-    
-    load_data = st.button("🔄 Load Data from BigQuery", type="primary")
+col1, col2 = st.columns(2)
 
-# Initialize session state for data
-if "catalog_df" not in st.session_state:
-    st.session_state["catalog_df"] = None
-if "txn_df" not in st.session_state:
-    st.session_state["txn_df"] = None
-
-# Load data when button is clicked
-if load_data:
-    try:
-        with st.spinner("Connecting to BigQuery..."):
-            # Setup BigQuery client
-            if auth_method == "Service Account JSON":
-                if not credentials_json:
-                    st.error("Please paste your service account JSON")
-                    st.stop()
-                credentials_info = json.loads(credentials_json)
-                credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                client = bigquery.Client(credentials=credentials, project=project_id)
-            else:
-                client = bigquery.Client(project=project_id)
-            
-            st.info("Loading product table...")
-            product_df = client.query(f"SELECT * FROM `{product_table}`").to_dataframe()
-            
-            st.info("Loading transactions table...")
-            txn_df = client.query(f"SELECT * FROM `{transactions_table}`").to_dataframe()
+with col1:
+    st.subheader("📦 Product Table")
+    st.caption("Required columns: product_id, product_title, product_description")
+    
+    product_file = st.file_uploader("Upload Product CSV", type=["csv"], key="product_csv")
+    
+    if product_file is not None:
+        try:
+            product_df = pd.read_csv(product_file)
             
             # Normalize column names
             product_df.columns = product_df.columns.str.strip().str.lower()
+            
+            # Validate schema
+            required_product_cols = ["product_id", "product_title", "product_description"]
+            missing = set(required_product_cols) - set(product_df.columns)
+            
+            if missing:
+                st.error(f"❌ Missing columns: {sorted(list(missing))}")
+                st.info(f"Found columns: {product_df.columns.tolist()}")
+            else:
+                # Process product data
+                product_df["product_id"] = product_df["product_id"].astype(str)
+                product_df["product_text"] = (
+                    product_df["product_title"].fillna("").astype(str) + " | " +
+                    product_df["product_description"].fillna("").astype(str)
+                ).str.lower()
+                
+                catalog_df = (
+                    product_df[["product_id", "product_title", "product_text"]]
+                    .rename(columns={"product_title": "product_name"})
+                    .drop_duplicates(subset=["product_id"])
+                    .reset_index(drop=True)
+                )
+                
+                st.session_state["catalog_df"] = catalog_df
+                st.success(f"✅ Loaded {len(catalog_df)} products")
+                
+                with st.expander("Preview Product Data"):
+                    st.dataframe(catalog_df.head(10), use_container_width=True)
+                    
+        except Exception as e:
+            st.error(f"Error reading product CSV: {e}")
+
+with col2:
+    st.subheader("🛒 Transaction Table")
+    st.caption("Required columns: tx_id, customer_id, product_id, tx_date, qty, price")
+    
+    txn_file = st.file_uploader("Upload Transaction CSV", type=["csv"], key="txn_csv")
+    
+    if txn_file is not None:
+        try:
+            txn_df = pd.read_csv(txn_file)
+            
+            # Normalize column names
             txn_df.columns = txn_df.columns.str.strip().str.lower()
             
-            # ---- Validate Product Schema ----
-            required_product_cols = ["product_id", "product_title", "product_description"]
-            for c in required_product_cols:
-                if c not in product_df.columns:
-                    raise ValueError(f"Missing {c} in product_table. Found: {product_df.columns.tolist()}")
-            
-            product_df["product_id"] = product_df["product_id"].astype(str)
-            product_df["product_text"] = (
-                product_df["product_title"].fillna("").astype(str) + " | " +
-                product_df["product_description"].fillna("").astype(str)
-            ).str.lower()
-            
-            catalog_df = (
-                product_df[["product_id", "product_title", "product_text"]]
-                .rename(columns={"product_title": "product_name"})
-                .drop_duplicates(subset=["product_id"])
-                .reset_index(drop=True)
-            )
-            
-            # ---- Validate Transaction Schema ----
+            # Validate schema
             required_txn_cols = ["tx_id", "customer_id", "product_id", "tx_date", "qty", "price"]
-            for c in required_txn_cols:
-                if c not in txn_df.columns:
-                    raise ValueError(f"Missing {c} in transaction_table. Found: {txn_df.columns.tolist()}")
+            missing = set(required_txn_cols) - set(txn_df.columns)
             
-            txn_df["customer_id"] = txn_df["customer_id"].astype(str)
-            txn_df["product_id"] = txn_df["product_id"].astype(str)
-            txn_df["tx_date"] = pd.to_datetime(txn_df["tx_date"], errors="coerce")
-            txn_df["qty"] = pd.to_numeric(txn_df["qty"], errors="coerce").fillna(0.0)
-            txn_df["price"] = pd.to_numeric(txn_df["price"], errors="coerce").fillna(0.0)
-            txn_df["amt"] = txn_df["qty"] * txn_df["price"]
-            
-            # Store in session state
-            st.session_state["catalog_df"] = catalog_df
-            st.session_state["txn_df"] = txn_df
-            
-            st.success(f"✅ Data loaded successfully!")
-            st.success(f"📦 Products: {catalog_df.shape[0]} rows, {catalog_df.shape[1]} columns")
-            st.success(f"🛒 Transactions: {txn_df.shape[0]} rows, {txn_df.shape[1]} columns")
-            
-    except Exception as e:
-        st.error(f"❌ Error loading data: {str(e)}")
+            if missing:
+                st.error(f"❌ Missing columns: {sorted(list(missing))}")
+                st.info(f"Found columns: {txn_df.columns.tolist()}")
+            else:
+                # Process transaction data
+                txn_df["customer_id"] = txn_df["customer_id"].astype(str)
+                txn_df["product_id"] = txn_df["product_id"].astype(str)
+                txn_df["tx_date"] = pd.to_datetime(txn_df["tx_date"], errors="coerce")
+                txn_df["qty"] = pd.to_numeric(txn_df["qty"], errors="coerce").fillna(0.0)
+                txn_df["price"] = pd.to_numeric(txn_df["price"], errors="coerce").fillna(0.0)
+                txn_df["amt"] = txn_df["qty"] * txn_df["price"]
+                
+                st.session_state["txn_df"] = txn_df
+                st.success(f"✅ Loaded {len(txn_df)} transactions")
+                
+                with st.expander("Preview Transaction Data"):
+                    st.dataframe(txn_df.head(10), use_container_width=True)
+                    
+        except Exception as e:
+            st.error(f"Error reading transaction CSV: {e}")
 
-# Display loaded data
-if st.session_state["catalog_df"] is not None and st.session_state["txn_df"] is not None:
+st.divider()
+
+# ===== Data Summary =====
+if "catalog_df" in st.session_state and "txn_df" in st.session_state:
     catalog_df = st.session_state["catalog_df"]
     txn_df = st.session_state["txn_df"]
     
-    tab1, tab2 = st.tabs(["📦 Product Catalog", "🛒 Transactions"])
+    st.header("📊 Data Summary")
+    
+    tab1, tab2, tab3 = st.tabs(["📦 Products", "🛒 Transactions", "📈 Analytics"])
     
     with tab1:
-        st.subheader("Product Catalog Preview")
-        st.dataframe(catalog_df.head(100), use_container_width=True)
-        st.caption(f"Showing first 100 of {len(catalog_df)} products")
+        st.subheader("Product Catalog")
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Products", len(catalog_df))
+            st.metric("Total Products", f"{len(catalog_df):,}")
         with col2:
-            st.metric("Columns", len(catalog_df.columns))
+            st.metric("Unique Product IDs", f"{catalog_df['product_id'].nunique():,}")
         with col3:
-            unique_products = catalog_df["product_id"].nunique()
-            st.metric("Unique Product IDs", unique_products)
+            st.metric("Columns", len(catalog_df.columns))
+        
+        st.dataframe(catalog_df, use_container_width=True, height=400)
+        
+        # Download button
+        st.download_button(
+            "📥 Download Processed Product Data",
+            data=catalog_df.to_csv(index=False).encode("utf-8"),
+            file_name="catalog_processed.csv",
+            mime="text/csv"
+        )
     
     with tab2:
-        st.subheader("Transactions Preview")
-        st.dataframe(txn_df.head(100), use_container_width=True)
-        st.caption(f"Showing first 100 of {len(txn_df)} transactions")
+        st.subheader("Transaction History")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -213,5 +199,50 @@ if st.session_state["catalog_df"] is not None and st.session_state["txn_df"] is 
         with col4:
             avg_order = txn_df["amt"].mean()
             st.metric("Avg Transaction", f"${avg_order:.2f}")
+        
+        st.dataframe(txn_df, use_container_width=True, height=400)
+        
+        # Download button
+        st.download_button(
+            "📥 Download Processed Transaction Data",
+            data=txn_df.to_csv(index=False).encode("utf-8"),
+            file_name="transactions_processed.csv",
+            mime="text/csv"
+        )
+    
+    with tab3:
+        st.subheader("Quick Analytics")
+        
+        # Top customers
+        st.write("**Top 10 Customers by Revenue**")
+        top_customers = (
+            txn_df.groupby("customer_id")["amt"]
+            .sum()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index()
+        )
+        top_customers.columns = ["Customer ID", "Total Spent"]
+        st.dataframe(top_customers, use_container_width=True)
+        
+        # Top products
+        st.write("**Top 10 Products by Transaction Count**")
+        top_products = (
+            txn_df.groupby("product_id")
+            .size()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index()
+        )
+        top_products.columns = ["Product ID", "Transaction Count"]
+        
+        # Merge with product names
+        top_products = top_products.merge(
+            catalog_df[["product_id", "product_name"]], 
+            on="product_id", 
+            how="left"
+        )
+        st.dataframe(top_products[["Product ID", "product_name", "Transaction Count"]], use_container_width=True)
+        
 else:
-    st.info("👆 Configure BigQuery settings in the sidebar and click 'Load Data' to continue.")
+    st.info("👆 Upload both Product and Transaction CSV files to see the data summary.")
