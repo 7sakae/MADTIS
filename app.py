@@ -1,7 +1,64 @@
 import streamlit as st
 import pandas as pd
 import json
+import streamlit as st
+import pandas as pd
+import json
+# ... keep ALL your imports (genai, etc.)
 
+st.set_page_config(page_title="Semantic Audience Studio", layout="wide")
+
+# 1. CUSTOM UI (The "New Look")
+st.markdown("""
+    <style>
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { 
+        background-color: #f0f2f6; border-radius: 5px; height: 50px; font-weight: bold;
+    }
+    .stTabs [aria-selected="true"] { background-color: #007bff !important; color: white !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🧠 Semantic Audience Studio")
+
+# 2. CREATE THE HORIZONTAL TABS
+t1, t2, t3, t4, t5 = st.tabs([
+    "📂 Data Prep", 
+    "🧬 Ontology", 
+    "🤖 AI Labeling", 
+    "👥 Audience Build",
+    "📊 Final Results"
+])
+
+# --- PHASE 1: DATA PREP ---
+with t1:
+    # PASTE YOUR "STEP 0" and "STEP 1" CODE HERE
+    # (The CSV uploads, JSON pastes, and Data Summaries)
+    pass 
+
+# --- PHASE 2: ONTOLOGY ---
+with t2:
+    # PASTE YOUR "STEP 2" CODE HERE
+    # (Gemini Ontology generation and JSON uploads)
+    pass
+
+# --- PHASE 3: LABELING ---
+with t3:
+    # PASTE YOUR "STEP 3" and "STEP 4" CODE HERE
+    # (Campaign weights and Product-to-Intent labeling)
+    pass
+
+# --- PHASE 4: AUDIENCE ---
+with t4:
+    # PASTE YOUR "STEP 5" and "STEP 6" CODE HERE
+    # (Customer profile builder and Dot-Product ranking)
+    pass
+
+# --- PHASE 5: RESULTS ---
+with t5:
+    # OPTIONAL: Move your final "Download" buttons and 
+    # big DataFrames here for a clean final view.
+    pass
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
