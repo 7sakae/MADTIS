@@ -216,19 +216,27 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
 
         st.write("**Top 10 Products by Transaction Count**")
         top_products = (
-            txn_df.groupby("product_id")
-            .size()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
+        txn_df.groupby("product_id")
+        .size()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index(name="transaction_count")
         )
-        top_products.columns = ["Product ID", "Transaction Count"]
+        
         top_products = top_products.merge(
             catalog_df[["product_id", "product_name"]],
             on="product_id",
             how="left"
         )
-        st.dataframe(top_products[["Product ID", "product_name", "Transaction Count"]], use_container_width=True)
+        
+        top_products = top_products.rename(columns={
+            "product_id": "Product ID",
+            "product_name": "Product Name",
+            "transaction_count": "Transaction Count"
+        })
+    
+    st.dataframe(top_products[["Product ID", "Product Name", "Transaction Count"]], use_container_width=True)
+
 
 else:
     st.info("👆 Upload both Product and Transaction CSV files to see the data summary.")
