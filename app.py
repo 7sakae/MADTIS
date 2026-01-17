@@ -1016,158 +1016,297 @@ if st.session_state.get("campaign_intent_profiles_json") is not None:
 
 # ============================================================================
 # STEP 4: PRODUCT → INTENT LABELING (MERGED SINGLE STEP)
+# Now supports:
+#   A) Upload product→intent labels CSV (skip LLM)
+#   B) Run LLM labeling (rate-limit safe)
+# Stores outputs in st.session_state (read-only demo: no DWH writes)
 # ============================================================================
+
 st.divider()
 st.header("Step 4: Product → Intent Labeling (Merged)")
-st.caption("Assign Top-K intents + scores + evidence per product using the fixed ontology (rate-limit safe).")
+st.caption("Either upload existing product→intent labels CSV, or run LLM labeling. Outputs stored in session_state only.")
 
+# Preconditions
 if "catalog_df" not in st.session_state:
-    st.info("👆 Upload Product CSV in Step 1 to enable Product → Intent labeling.")
-    st.stop()
-
-if "dim_intent_df" not in st.session_state or "ontology" not in st.session_state:
-    st.info("👆 Generate the ontology in Step 2 first.")
+    st.info("👆 Upload Product CSV in Step 1 to enable Step 4.")
     st.stop()
 
 catalog_df = st.session_state["catalog_df"].copy()
-dim_intent_df = st.session_state["dim_intent_df"].copy()
-ontology = st.session_state["ontology"]
-ontology_version = str(ontology.get("version", "v1"))
 
-st.subheader("🔑 API Configuration")
-gemini_api_key = None
-if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-    gemini_api_key = st.secrets["GEMINI_API_KEY"]
-    st.success("✅ Gemini API key loaded from secrets")
-else:
-    gemini_api_key = st.text_input(
-        "Enter your Gemini API Key",
-        type="password",
-        help="Get your API key from https://aistudio.google.com/apikey",
-        key="gemini_key_step4"
-    )
-if not gemini_api_key:
-    st.warning("⚠️ Please provide a Gemini API key to run product labeling.")
-    st.stop()
-
-st.divider()
-
-c1, c2 = st.columns([2, 1])
-
-with c1:
-    st.subheader("Labeling settings")
-    top_k_intents = st.number_input("Top-K intents per product", min_value=1, max_value=10, value=3, key="step4_topk")
-    min_score = st.slider("Minimum score threshold", min_value=0.0, max_value=1.0, value=0.25, step=0.05, key="step4_min_score")
-    product_text_chars = st.number_input("Max characters of product_text sent to LLM", min_value=120, max_value=2000, value=600, step=60, key="step4_text_chars")
-
-with c2:
-    st.subheader("Rate-limit settings (avoid 429)")
-    model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step4_model_name")
-    rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8, key="step4_rpm_limit")
-    products_per_request = st.number_input("Products per request (batch size)", min_value=1, max_value=12, value=4, key="step4_products_per_request")
-    max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4, key="step4_max_retries")
-
-label_btn = st.button("🏷️ Run Product → Intent Labeling", type="primary", use_container_width=True, key="step4_label_btn")
-
-intent_candidates = []
-for _, r in dim_intent_df.iterrows():
-    intent_candidates.append({
-        "intent_id": str(r.get("intent_id", "")).strip(),
-        "intent_name": str(r.get("intent_name", "")).strip(),
-        "definition": str(r.get("definition", "")).strip(),
-    })
-
-intent_snippet = _safe_json_snippet(intent_candidates)
-
-def clamp01(x):
-    try:
-        v = float(x)
-    except Exception:
-        return 0.0
-    if v < 0:
-        return 0.0
-    if v > 1:
-        return 1.0
-    return v
-
+# Initialize session outputs if absent
 if "product_intent_labels_df" not in st.session_state:
     st.session_state["product_intent_labels_df"] = None
 if "product_intent_labels_json" not in st.session_state:
     st.session_state["product_intent_labels_json"] = None
 
-if label_btn:
-    try:
-        import time
-        import random
-        import google.generativeai as genai
+mode = st.radio(
+    "Choose Step 4 mode",
+    ["Upload product→intent labels CSV", "Run LLM labeling"],
+    horizontal=True,
+    key="step4_mode"
+)
 
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel(model_name)
+# ----------------------------------------------------------------------------
+# MODE A: UPLOAD CSV
+# ----------------------------------------------------------------------------
+if mode == "Upload product→intent labels CSV":
+    st.subheader("📤 Upload product_intent_labels.csv")
+    st.caption(
+        "Required columns: product_id, intent_id, and score (or weight). "
+        "Recommended: product_name, intent_name, rank."
+    )
 
-        min_interval = 60.0 / float(rpm_limit)
+    uploaded_labels = st.file_uploader("Upload product_intent_labels CSV", type=["csv"], key="step4_upload_labels")
 
-        existing_rows = []
-        existing_json = []
-        if st.session_state["product_intent_labels_df"] is not None:
-            existing_rows = st.session_state["product_intent_labels_df"].to_dict("records")
-        if st.session_state["product_intent_labels_json"] is not None:
-            existing_json = list(st.session_state["product_intent_labels_json"])
+    if uploaded_labels is not None:
+        try:
+            labels_df = pd.read_csv(uploaded_labels)
+            labels_df.columns = labels_df.columns.str.strip().str.lower()
 
-        already_done = set([x.get("product_id") for x in existing_json if x.get("product_id")])
+            required_base = {"product_id", "intent_id"}
+            missing_base = required_base - set(labels_df.columns)
+            if missing_base:
+                st.error(f"❌ Missing required columns: {sorted(list(missing_base))}")
+                st.info(f"Found columns: {labels_df.columns.tolist()}")
+                st.stop()
 
-        todo_df = catalog_df[~catalog_df["product_id"].astype(str).isin(already_done)].reset_index(drop=True)
+            # score/weight handling
+            if "score" not in labels_df.columns and "weight" not in labels_df.columns:
+                st.error("❌ CSV must contain either 'score' or 'weight' column.")
+                st.info("Tip: If your file uses 'weight', we will map it to 'score'.")
+                st.stop()
 
-        def call_llm_with_retry(prompt: str):
-            last_call = st.session_state.get("_last_llm_call_ts_step4", 0.0)
-            now = time.time()
-            wait = (last_call + min_interval) - now
-            if wait > 0:
-                time.sleep(wait)
+            if "score" not in labels_df.columns and "weight" in labels_df.columns:
+                labels_df["score"] = pd.to_numeric(labels_df["weight"], errors="coerce").fillna(0.0)
 
-            for attempt in range(int(max_retries) + 1):
-                try:
-                    resp = model.generate_content(prompt)
-                    st.session_state["_last_llm_call_ts_step4"] = time.time()
-                    return resp.text
-                except Exception as e:
-                    msg = str(e)
-                    if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
-                        retry_s = parse_retry_delay_seconds(msg)
-                        if retry_s <= 0:
-                            retry_s = int(min(60, (2 ** attempt) * 5))
-                        retry_s = retry_s + random.randint(1, 3)
-                        st.warning(f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... (attempt {attempt+1}/{int(max_retries)+1})")
-                        time.sleep(retry_s)
-                        continue
-                    raise
-            raise RuntimeError("Exceeded retry attempts due to rate limiting.")
+            labels_df["score"] = pd.to_numeric(labels_df["score"], errors="coerce").fillna(0.0)
 
-        created_at = pd.Timestamp.now().isoformat()
-        labeling_run_id = f"run_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+            # Optional columns
+            if "product_name" not in labels_df.columns:
+                # try to enrich from catalog_df
+                if "product_name" in catalog_df.columns:
+                    labels_df = labels_df.merge(
+                        catalog_df[["product_id", "product_name"]],
+                        on="product_id",
+                        how="left"
+                    )
+                else:
+                    labels_df["product_name"] = ""
 
-        results_rows = list(existing_rows)
-        labels_json = list(existing_json)
+            if "intent_name" not in labels_df.columns:
+                labels_df["intent_name"] = ""
 
-        if len(todo_df) == 0:
-            st.info("✅ All products already labeled in session_state.")
-        else:
-            with st.spinner("🏷️ Labeling products (batched + throttled)..."):
-                progress = st.progress(0)
-                total_batches = (len(todo_df) + int(products_per_request) - 1) // int(products_per_request)
+            if "rank" not in labels_df.columns:
+                # derive rank per product by descending score
+                labels_df = labels_df.sort_values(["product_id", "score"], ascending=[True, False])
+                labels_df["rank"] = labels_df.groupby("product_id").cumcount() + 1
 
-                for b_idx, batch in enumerate(chunk_df(todo_df, int(products_per_request))):
-                    batch_products = []
-                    for _, r in batch.iterrows():
-                        pid = str(r["product_id"])
-                        pname = str(r.get("product_name", "") or r.get("product_title", ""))
-                        ptext = str(r.get("product_text", ""))[:int(product_text_chars)]
-                        batch_products.append({
-                            "product_id": pid,
-                            "product_name": pname,
-                            "product_text": ptext
-                        })
+            # Normalize types
+            labels_df["product_id"] = labels_df["product_id"].astype(str)
+            labels_df["intent_id"] = labels_df["intent_id"].astype(str)
+            labels_df["rank"] = pd.to_numeric(labels_df["rank"], errors="coerce").fillna(0).astype(int)
 
-                    prompt = f"""
+            # Build JSON view (grouped)
+            labels_json = []
+            for pid, g in labels_df.sort_values(["product_id", "rank"]).groupby("product_id"):
+                pname = str(g["product_name"].iloc[0]) if "product_name" in g.columns else ""
+                top_intents = []
+                for _, row in g.iterrows():
+                    top_intents.append({
+                        "intent_id": str(row.get("intent_id", "")),
+                        "intent_name": str(row.get("intent_name", "")),
+                        "score": float(row.get("score", 0.0)),
+                        "evidence": str(row.get("evidence", "")) if "evidence" in labels_df.columns else "",
+                        "reason": str(row.get("reason", "")) if "reason" in labels_df.columns else ""
+                    })
+                labels_json.append({
+                    "product_id": str(pid),
+                    "product_name": pname,
+                    "top_intents": top_intents,
+                    "source": "uploaded_csv"
+                })
+
+            # Store
+            st.session_state["product_intent_labels_df"] = labels_df
+            st.session_state["product_intent_labels_json"] = labels_json
+
+            st.success(f"✅ Loaded product→intent labels from CSV: {len(labels_df):,} rows, {labels_df['product_id'].nunique():,} products")
+
+            with st.expander("Preview uploaded labels"):
+                st.dataframe(labels_df.head(50), use_container_width=True)
+
+        except Exception as e:
+            st.error(f"❌ Error reading labels CSV: {e}")
+
+# ----------------------------------------------------------------------------
+# MODE B: RUN LLM LABELING (your existing implementation)
+# ----------------------------------------------------------------------------
+else:
+    # Preconditions for LLM mode
+    if "dim_intent_df" not in st.session_state or "ontology" not in st.session_state:
+        st.info("👆 Generate the ontology in Step 2 first (needed for LLM labeling).")
+        st.stop()
+
+    dim_intent_df = st.session_state["dim_intent_df"].copy()
+    ontology = st.session_state["ontology"]
+    ontology_version = str(ontology.get("version", "v1"))
+
+    # API key (reuse secrets or input)
+    st.subheader("🔑 API Configuration")
+    gemini_api_key = None
+    if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+        gemini_api_key = st.secrets["GEMINI_API_KEY"]
+        st.success("✅ Gemini API key loaded from secrets")
+    else:
+        gemini_api_key = st.text_input(
+            "Enter your Gemini API Key",
+            type="password",
+            help="Get your API key from https://aistudio.google.com/apikey",
+            key="gemini_key_step4"
+        )
+
+    if not gemini_api_key:
+        st.warning("⚠️ Please provide a Gemini API key to run product labeling.")
+        st.stop()
+
+    st.divider()
+
+    # Controls
+    c1, c2 = st.columns([2, 1])
+
+    with c1:
+        st.subheader("Labeling settings")
+        top_k_intents = st.number_input("Top-K intents per product", min_value=1, max_value=10, value=3, key="step4_topk")
+        min_score = st.slider("Minimum score threshold", min_value=0.0, max_value=1.0, value=0.25, step=0.05, key="step4_minscore")
+        product_text_chars = st.number_input("Max characters of product_text sent to LLM", min_value=120, max_value=2000, value=600, step=60, key="step4_textchars")
+
+    with c2:
+        st.subheader("Rate-limit settings (avoid 429)")
+        model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step4_model_name")
+        rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8, key="step4_rpm_limit")
+        products_per_request = st.number_input("Products per request (batch size)", min_value=1, max_value=12, value=4, key="step4_products_per_request")
+        max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4, key="step4_max_retries")
+
+    label_btn = st.button("🏷️ Run Product → Intent Labeling", type="primary", use_container_width=True, key="step4_run_btn")
+
+    # Prepare concise intent list to reduce prompt size
+    intent_candidates = []
+    for _, r in dim_intent_df.iterrows():
+        intent_candidates.append({
+            "intent_id": str(r.get("intent_id", "")).strip(),
+            "intent_name": str(r.get("intent_name", "")).strip(),
+            "definition": str(r.get("definition", "")).strip(),
+        })
+
+    def _safe_json_snippet(obj, max_chars=16000):
+        txt = json.dumps(obj, ensure_ascii=False)
+        return txt[:max_chars]
+
+    intent_snippet = _safe_json_snippet(intent_candidates)
+
+    # Helpers
+    def extract_json_from_text(text: str) -> dict:
+        import re
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+        text = re.sub(r"^```json\s*", "", text)
+        text = re.sub(r"```\s*$", "", text)
+        return json.loads(text.strip())
+
+    def parse_retry_delay_seconds(err_text: str) -> int:
+        import re
+        m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
+        return int(m.group(1)) if m else 0
+
+    def chunk_df(df, size: int):
+        for start in range(0, len(df), size):
+            yield df.iloc[start:start+size]
+
+    def clamp01(x):
+        try:
+            v = float(x)
+        except:
+            return 0.0
+        if v < 0: return 0.0
+        if v > 1: return 1.0
+        return v
+
+    # Run labeling
+    if label_btn:
+        try:
+            import time
+            import random
+            import google.generativeai as genai
+
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel(model_name)
+
+            min_interval = 60.0 / float(rpm_limit)
+
+            existing_rows = []
+            existing_json = []
+            if st.session_state["product_intent_labels_df"] is not None:
+                existing_rows = st.session_state["product_intent_labels_df"].to_dict("records")
+            if st.session_state["product_intent_labels_json"] is not None:
+                existing_json = list(st.session_state["product_intent_labels_json"])
+
+            already_done = set([x.get("product_id") for x in existing_json if x.get("product_id")])
+
+            todo_df = catalog_df[~catalog_df["product_id"].astype(str).isin(already_done)].reset_index(drop=True)
+
+            def call_llm_with_retry(prompt: str):
+                last_call = st.session_state.get("_last_llm_call_ts_step4", 0.0)
+                now = time.time()
+                wait = (last_call + min_interval) - now
+                if wait > 0:
+                    time.sleep(wait)
+
+                for attempt in range(int(max_retries) + 1):
+                    try:
+                        resp = model.generate_content(prompt)
+                        st.session_state["_last_llm_call_ts_step4"] = time.time()
+                        return resp.text
+                    except Exception as e:
+                        msg = str(e)
+                        if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
+                            retry_s = parse_retry_delay_seconds(msg)
+                            if retry_s <= 0:
+                                retry_s = int(min(60, (2 ** attempt) * 5))
+                            retry_s = retry_s + random.randint(1, 3)
+                            st.warning(f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... (attempt {attempt+1}/{int(max_retries)+1})")
+                            time.sleep(retry_s)
+                            continue
+                        raise
+                raise RuntimeError("Exceeded retry attempts due to rate limiting.")
+
+            created_at = pd.Timestamp.now().isoformat()
+            labeling_run_id = f"run_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+
+            results_rows = list(existing_rows)
+            labels_json = list(existing_json)
+
+            if len(todo_df) == 0:
+                st.info("✅ All products already labeled in session_state.")
+            else:
+                with st.spinner("🏷️ Labeling products (batched + throttled)..."):
+                    progress = st.progress(0)
+                    total_batches = (len(todo_df) + int(products_per_request) - 1) // int(products_per_request)
+
+                    for b_idx, batch in enumerate(chunk_df(todo_df, int(products_per_request))):
+                        batch_products = []
+                        for _, r in batch.iterrows():
+                            pid = str(r["product_id"])
+                            pname = str(r.get("product_name", "") or r.get("product_title", ""))
+                            ptext = str(r.get("product_text", ""))[:int(product_text_chars)]
+                            batch_products.append({
+                                "product_id": pid,
+                                "product_name": pname,
+                                "product_text": ptext
+                            })
+
+                        prompt = f"""
 You are labeling retail products into a fixed Intent Ontology for marketing.
 
 You MUST choose intents ONLY from this list (do not invent new intents):
@@ -1184,8 +1323,7 @@ Task for EACH product:
    - score (0.0 to 1.0, higher = more relevant)
    - evidence (a short phrase copied or paraphrased from the product text)
    - reason (1 short sentence)
-3) Ensure intents are not near-duplicates if broader intents exist.
-4) Return valid JSON only.
+3) Return valid JSON only.
 
 Return STRICT minified JSON:
 {{
@@ -1207,82 +1345,86 @@ Return STRICT minified JSON:
 }}
 """.strip()
 
-                    raw = call_llm_with_retry(prompt)
-                    data = extract_json_from_text(raw)
-                    batch_labels = data.get("labels", []) or []
+                        raw = call_llm_with_retry(prompt)
+                        data = extract_json_from_text(raw)
+                        batch_labels = data.get("labels", []) or []
 
-                    for item in batch_labels:
-                        pid = str(item.get("product_id", "")).strip()
-                        pname = str(item.get("product_name", "")).strip()
-                        intents = item.get("top_intents", []) or []
+                        for item in batch_labels:
+                            pid = str(item.get("product_id", "")).strip()
+                            pname = str(item.get("product_name", "")).strip()
+                            intents = item.get("top_intents", []) or []
 
-                        cleaned = []
-                        for it in intents:
-                            iid = str(it.get("intent_id", "")).strip()
-                            iname = str(it.get("intent_name", "")).strip()
-                            score = clamp01(it.get("score", 0.0))
-                            evidence = str(it.get("evidence", "")).strip()
-                            reason = str(it.get("reason", "")).strip()
-                            if iid and iname:
-                                cleaned.append({
-                                    "intent_id": iid,
-                                    "intent_name": iname,
-                                    "score": score,
-                                    "evidence": evidence,
-                                    "reason": reason
-                                })
+                            cleaned = []
+                            for it in intents:
+                                iid = str(it.get("intent_id", "")).strip()
+                                iname = str(it.get("intent_name", "")).strip()
+                                score = clamp01(it.get("score", 0.0))
+                                evidence = str(it.get("evidence", "")).strip()
+                                reason = str(it.get("reason", "")).strip()
+                                if iid and iname:
+                                    cleaned.append({
+                                        "intent_id": iid,
+                                        "intent_name": iname,
+                                        "score": score,
+                                        "evidence": evidence,
+                                        "reason": reason
+                                    })
 
-                        cleaned = sorted(cleaned, key=lambda x: x["score"], reverse=True)
-                        cleaned = [x for x in cleaned if x["score"] >= float(min_score)]
-                        cleaned = cleaned[:int(top_k_intents)]
+                            cleaned = sorted(cleaned, key=lambda x: x["score"], reverse=True)
+                            cleaned = [x for x in cleaned if x["score"] >= float(min_score)]
+                            cleaned = cleaned[:int(top_k_intents)]
 
-                        labels_json.append({
-                            "product_id": pid,
-                            "product_name": pname,
-                            "top_intents": cleaned,
-                            "ontology_version": ontology_version,
-                            "labeling_run_id": labeling_run_id,
-                            "model": model_name,
-                            "created_at": created_at
-                        })
-
-                        for rank, it in enumerate(cleaned, start=1):
-                            results_rows.append({
+                            labels_json.append({
                                 "product_id": pid,
                                 "product_name": pname,
-                                "rank": rank,
-                                "intent_id": it["intent_id"],
-                                "intent_name": it["intent_name"],
-                                "score": it["score"],
-                                "evidence": it["evidence"],
-                                "reason": it["reason"],
+                                "top_intents": cleaned,
                                 "ontology_version": ontology_version,
                                 "labeling_run_id": labeling_run_id,
                                 "model": model_name,
                                 "created_at": created_at
                             })
 
-                    st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
-                    st.session_state["product_intent_labels_json"] = labels_json
+                            for rank, it in enumerate(cleaned, start=1):
+                                results_rows.append({
+                                    "product_id": pid,
+                                    "product_name": pname,
+                                    "rank": rank,
+                                    "intent_id": it["intent_id"],
+                                    "intent_name": it["intent_name"],
+                                    "score": it["score"],
+                                    "evidence": it["evidence"],
+                                    "reason": it["reason"],
+                                    "ontology_version": ontology_version,
+                                    "labeling_run_id": labeling_run_id,
+                                    "model": model_name,
+                                    "created_at": created_at
+                                })
 
-                    progress.progress((b_idx + 1) / max(total_batches, 1))
+                        st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
+                        st.session_state["product_intent_labels_json"] = labels_json
 
-            st.success("✅ Product → Intent labeling completed (Top-K + scores + evidence).")
+                        progress.progress((b_idx + 1) / max(total_batches, 1))
 
-        st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
-        st.session_state["product_intent_labels_json"] = labels_json
+                st.success("✅ Product → Intent labeling completed (Top-K + scores + evidence).")
 
-    except ImportError:
-        st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
-    except Exception as e:
-        st.error(f"❌ Error labeling products: {str(e)}")
-        st.exception(e)
+            st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
+            st.session_state["product_intent_labels_json"] = labels_json
 
+        except ImportError:
+            st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+        except Exception as e:
+            st.error(f"❌ Error labeling products: {str(e)}")
+            st.exception(e)
+
+# ----------------------------------------------------------------------------
+# DISPLAY OUTPUTS (both modes)
+# ----------------------------------------------------------------------------
 if st.session_state.get("product_intent_labels_df") is not None:
     st.subheader("🏷️ Product Intent Labels (Preview)")
     df = st.session_state["product_intent_labels_df"]
     st.dataframe(df.head(500), use_container_width=True, height=420)
-    st.caption(f"Showing up to 500 rows (long format). Total rows: {len(df):,}")
+    st.caption(f"Showing up to 500 rows. Total rows: {len(df):,}")
+
     st.download_button(
         "📥 Download product_intent_labels.csv",
         data=df.to_csv(index=False).encode("utf-8"),
@@ -1295,6 +1437,7 @@ if st.session_state.get("product_intent_labels_json") is not None:
     st.subheader("📦 Product Intent Labels (JSON)")
     st.json(st.session_state["product_intent_labels_json"][:50])
     st.caption("Showing first 50 products in JSON preview.")
+
     st.download_button(
         "📥 Download product_intent_labels.json",
         data=json.dumps(st.session_state["product_intent_labels_json"], ensure_ascii=False, indent=2),
@@ -1303,6 +1446,3 @@ if st.session_state.get("product_intent_labels_json") is not None:
         use_container_width=True
     )
 
-# ============================================================================
-# END OF APP
-# ============================================================================
