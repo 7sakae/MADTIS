@@ -1446,3 +1446,308 @@ if st.session_state.get("product_intent_labels_json") is not None:
         use_container_width=True
     )
 
+# ============================================================================
+# STEP 5: CUSTOMER INTENT PROFILE BUILDER (from transactions + product-intent labels)
+# - Accepts product_intent_labels via:
+#   (A) session_state from Step 4 LLM labeling, OR
+#   (B) CSV upload (product_id, intent_id, intent_name, score)
+# - Produces:
+#   - customer_intent_profile_df (long format)
+#   - optional customer_lifestyle_profile_df if ontology tables exist
+# - Stores in st.session_state (read-only demo: no DWH writes)
+# ============================================================================
+
+st.divider()
+st.header("Step 5: Customer Intent Profile Builder")
+st.caption("Aggregate transactions into customer-level intent weights using Product → Intent labels (CSV upload or Step 4 outputs).")
+
+# Preconditions
+if "txn_df" not in st.session_state:
+    st.info("👆 Upload Transaction CSV in Step 1 to enable Step 5.")
+    st.stop()
+
+txn_df = st.session_state["txn_df"].copy()
+
+# --------------------------------------------------------------------
+# 5.0 Choose Product→Intent Labels Source
+# --------------------------------------------------------------------
+st.subheader("5.0 Product → Intent Labels Source")
+
+labels_source = st.radio(
+    "Choose labels source",
+    ["Use Step 4 output (session)", "Upload product_intent_labels.csv"],
+    horizontal=True,
+    key="step5_labels_source"
+)
+
+labels_df = None
+
+if labels_source == "Use Step 4 output (session)":
+    if "product_intent_labels_df" in st.session_state and st.session_state["product_intent_labels_df"] is not None:
+        labels_df = st.session_state["product_intent_labels_df"].copy()
+        st.success(f"✅ Loaded labels from session_state: {len(labels_df):,} rows")
+        with st.expander("Preview labels (session)"):
+            st.dataframe(labels_df.head(20), use_container_width=True)
+    else:
+        st.warning("⚠️ No Step 4 labels found in session_state. Please run Step 4 or upload a CSV.")
+else:
+    uploaded_labels = st.file_uploader(
+        "Upload product_intent_labels.csv",
+        type=["csv"],
+        key="step5_labels_csv"
+    )
+    if uploaded_labels is not None:
+        try:
+            labels_df = pd.read_csv(uploaded_labels)
+            labels_df.columns = labels_df.columns.str.strip().str.lower()
+            st.success(f"✅ Uploaded labels CSV: {len(labels_df):,} rows")
+            with st.expander("Preview uploaded labels"):
+                st.dataframe(labels_df.head(20), use_container_width=True)
+        except Exception as e:
+            st.error(f"Error reading labels CSV: {e}")
+
+if labels_df is None:
+    st.info("👆 Provide Product → Intent labels (Step 4 output or CSV upload) to continue.")
+    st.stop()
+
+# --------------------------------------------------------------------
+# 5.1 Validate / normalize schemas
+# --------------------------------------------------------------------
+st.subheader("5.1 Validation & Configuration")
+
+# Normalize txn schema
+txn_df.columns = txn_df.columns.str.strip().str.lower()
+required_txn = {"tx_id", "customer_id", "product_id", "tx_date", "qty", "price"}
+missing_txn = required_txn - set(txn_df.columns)
+if missing_txn:
+    st.error(f"❌ Transactions missing columns: {sorted(list(missing_txn))}")
+    st.stop()
+
+txn_df["customer_id"] = txn_df["customer_id"].astype(str)
+txn_df["product_id"] = txn_df["product_id"].astype(str)
+txn_df["tx_date"] = pd.to_datetime(txn_df["tx_date"], errors="coerce")
+txn_df["qty"] = pd.to_numeric(txn_df["qty"], errors="coerce").fillna(0.0)
+txn_df["price"] = pd.to_numeric(txn_df["price"], errors="coerce").fillna(0.0)
+txn_df["amt"] = txn_df["qty"] * txn_df["price"]
+
+# Normalize labels schema
+labels_df.columns = labels_df.columns.str.strip().str.lower()
+
+# Support two formats:
+# A) "long" from Step 4: product_id, intent_id, intent_name, score, rank, ...
+# B) "wide/json-ish" not supported here (we keep it strict for CSV upload)
+required_labels = {"product_id", "intent_id", "intent_name"}
+missing_labels = required_labels - set(labels_df.columns)
+if missing_labels:
+    st.error(f"❌ Labels missing columns: {sorted(list(missing_labels))}. Required: {sorted(list(required_labels))}")
+    st.info(f"Found columns: {labels_df.columns.tolist()}")
+    st.stop()
+
+# Score column optional, default = 1.0
+if "score" not in labels_df.columns:
+    labels_df["score"] = 1.0
+
+labels_df["product_id"] = labels_df["product_id"].astype(str)
+labels_df["intent_id"] = labels_df["intent_id"].astype(str)
+labels_df["intent_name"] = labels_df["intent_name"].astype(str)
+labels_df["score"] = pd.to_numeric(labels_df["score"], errors="coerce").fillna(0.0)
+
+# Deduplicate to keep best score for (product_id, intent_id)
+labels_df = (
+    labels_df.sort_values("score", ascending=False)
+    .drop_duplicates(subset=["product_id", "intent_id"])
+    .reset_index(drop=True)
+)
+
+# Controls
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    weight_method = st.selectbox(
+        "Weighting method for transactions",
+        ["amt (qty*price)", "qty", "count"],
+        index=0,
+        key="step5_weight_method"
+    )
+
+with c2:
+    min_customer_txns = st.number_input(
+        "Min transactions per customer (filter)",
+        min_value=0,
+        max_value=10_000,
+        value=0,
+        key="step5_min_txns"
+    )
+
+with c3:
+    min_customer_spend = st.number_input(
+        "Min spend per customer (filter)",
+        min_value=0.0,
+        max_value=1e12,
+        value=0.0,
+        step=10.0,
+        key="step5_min_spend"
+    )
+
+apply_score = st.checkbox("Multiply by intent score (recommended)", value=True, key="step5_apply_score")
+normalize_mode = st.selectbox(
+    "Normalize customer intent weights",
+    ["sum_to_1", "none"],
+    index=0,
+    key="step5_normalize_mode"
+)
+
+build_btn = st.button("🧩 Build Customer Intent Profiles", type="primary", use_container_width=True)
+
+# --------------------------------------------------------------------
+# 5.2 Build customer intent profiles
+# --------------------------------------------------------------------
+if build_btn:
+    try:
+        # Join transactions to labels
+        t = txn_df[["tx_id", "customer_id", "product_id", "tx_date", "qty", "price", "amt"]].copy()
+        l = labels_df[["product_id", "intent_id", "intent_name", "score"]].copy()
+
+        joined = t.merge(l, on="product_id", how="inner")
+
+        if joined.empty:
+            st.error("❌ No matches between transactions.product_id and labels.product_id. Check your IDs.")
+            st.stop()
+
+        # Compute base weight
+        if weight_method.startswith("amt"):
+            base = joined["amt"]
+        elif weight_method == "qty":
+            base = joined["qty"]
+        else:
+            base = 1.0
+
+        joined["base_weight"] = base
+
+        # Contribution
+        joined["contribution"] = joined["base_weight"] * (joined["score"] if apply_score else 1.0)
+
+        # Aggregate per customer + intent
+        agg = (
+            joined.groupby(["customer_id", "intent_id", "intent_name"], as_index=False)
+            .agg(
+                intent_value=("contribution", "sum"),
+                txn_count=("tx_id", "nunique"),
+                last_tx_date=("tx_date", "max")
+            )
+        )
+
+        # Add customer-level totals for filtering + normalization
+        cust_totals = (
+            joined.groupby("customer_id", as_index=False)
+            .agg(
+                customer_total_value=("contribution", "sum"),
+                customer_txn_count=("tx_id", "nunique"),
+                customer_last_tx_date=("tx_date", "max")
+            )
+        )
+
+        agg = agg.merge(cust_totals, on="customer_id", how="left")
+
+        # Filters
+        if min_customer_txns > 0:
+            agg = agg[agg["customer_txn_count"] >= int(min_customer_txns)]
+        if min_customer_spend > 0:
+            agg = agg[agg["customer_total_value"] >= float(min_customer_spend)]
+
+        if agg.empty:
+            st.warning("⚠️ After filters, no customers remain. Reduce min thresholds.")
+            st.stop()
+
+        # Normalize weights
+        if normalize_mode == "sum_to_1":
+            agg["intent_weight"] = agg["intent_value"] / agg["customer_total_value"].replace({0: pd.NA})
+            agg["intent_weight"] = agg["intent_weight"].fillna(0.0)
+        else:
+            agg["intent_weight"] = agg["intent_value"]
+
+        # Rank intents per customer
+        agg["intent_rank"] = (
+            agg.sort_values(["customer_id", "intent_weight"], ascending=[True, False])
+            .groupby("customer_id")
+            .cumcount() + 1
+        )
+
+        customer_intent_profile_df = agg.sort_values(["customer_id", "intent_rank"]).reset_index(drop=True)
+
+        # Store in session_state
+        st.session_state["customer_intent_profile_df"] = customer_intent_profile_df
+
+        st.success(f"✅ Built customer_intent_profile_df: {len(customer_intent_profile_df):,} rows")
+
+        # Optional: build lifestyle profile if available
+        customer_lifestyle_profile_df = None
+        if "dim_intent_df" in st.session_state and st.session_state["dim_intent_df"] is not None:
+            dim_intent_df = st.session_state["dim_intent_df"].copy()
+            dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
+
+            if "intent_id" in dim_intent_df.columns and "lifestyle_id" in dim_intent_df.columns:
+                map_df = dim_intent_df[["intent_id", "lifestyle_id"]].drop_duplicates()
+                tmp = customer_intent_profile_df.merge(map_df, on="intent_id", how="left")
+
+                # Aggregate to lifestyle level
+                ls = (
+                    tmp.groupby(["customer_id", "lifestyle_id"], as_index=False)
+                    .agg(
+                        lifestyle_value=("intent_value", "sum"),
+                        lifestyle_weight=("intent_weight", "sum"),
+                        last_tx_date=("last_tx_date", "max"),
+                        txn_count=("txn_count", "sum")
+                    )
+                )
+
+                # Rank lifestyles per customer
+                ls["lifestyle_rank"] = (
+                    ls.sort_values(["customer_id", "lifestyle_weight"], ascending=[True, False])
+                    .groupby("customer_id")
+                    .cumcount() + 1
+                )
+
+                customer_lifestyle_profile_df = ls.sort_values(["customer_id", "lifestyle_rank"]).reset_index(drop=True)
+                st.session_state["customer_lifestyle_profile_df"] = customer_lifestyle_profile_df
+
+                st.success(f"✅ Built customer_lifestyle_profile_df: {len(customer_lifestyle_profile_df):,} rows")
+            else:
+                st.info("ℹ️ dim_intent_df missing lifestyle_id mapping. Skipping customer_lifestyle_profile_df.")
+        else:
+            st.info("ℹ️ No dim_intent_df found. Skipping customer_lifestyle_profile_df.")
+
+    except Exception as e:
+        st.error(f"❌ Error building customer intent profiles: {e}")
+        st.exception(e)
+
+# --------------------------------------------------------------------
+# 5.3 Display + download
+# --------------------------------------------------------------------
+if "customer_intent_profile_df" in st.session_state and st.session_state["customer_intent_profile_df"] is not None:
+    st.subheader("🧾 Customer Intent Profile (Preview)")
+    df = st.session_state["customer_intent_profile_df"]
+    st.dataframe(df.head(500), use_container_width=True, height=420)
+    st.caption(f"Showing up to 500 rows. Total rows: {len(df):,}")
+
+    st.download_button(
+        "📥 Download customer_intent_profile.csv",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name="customer_intent_profile.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+if "customer_lifestyle_profile_df" in st.session_state and st.session_state["customer_lifestyle_profile_df"] is not None:
+    st.subheader("🧾 Customer Lifestyle Profile (Preview)")
+    lsdf = st.session_state["customer_lifestyle_profile_df"]
+    st.dataframe(lsdf.head(500), use_container_width=True, height=420)
+    st.caption(f"Showing up to 500 rows. Total rows: {len(lsdf):,}")
+
+    st.download_button(
+        "📥 Download customer_lifestyle_profile.csv",
+        data=lsdf.to_csv(index=False).encode("utf-8"),
+        file_name="customer_lifestyle_profile.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
