@@ -321,7 +321,7 @@ if "catalog_df" in st.session_state:
             
             # Configure Gemini
             genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             
             # Helper function to extract JSON
             def extract_json_from_text(text: str) -> dict:
@@ -467,7 +467,7 @@ Return STRICT minified JSON:
                     "version": "v1",
                     "created_at": pd.Timestamp.now().isoformat(),
                     "total_products": len(catalog_df),
-                    "model": "gemini-2.0-flash-exp",
+                    "model": "gemini-2.5-flash",
                     "language": language,
                     "lifestyles": ontology_data.get("lifestyles", []),
                     "metadata": {
@@ -589,11 +589,11 @@ with left:
 with right:
     st.subheader("Rate-limit settings (to avoid 429)")
     # Use a stable model name (you can change if you want)
-    model_name = st.text_input("Model name", value="gemini-2.0-flash-exp")
-    # Your error says 10 RPM quota → set below that
-    rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8)
-    batch_size = st.number_input("Campaigns per request (batch size)", min_value=1, max_value=10, value=3)
-    max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4)
+   model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step3_model_name")
+   rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8, key="step3_rpm_limit")
+   batch_size = st.number_input("Campaigns per request (batch size)", min_value=1, max_value=10, value=3, key="step3_batch_size")
+   max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4, key="step3_max_retries")
+
 
     gen_campaign_profile_btn = st.button("🤖 Generate Campaign Intent Profiles", type="primary", use_container_width=True)
     st.info(f"Will process {len(campaigns_df)} campaign(s)")
@@ -909,10 +909,11 @@ with c1:
 
 with c2:
     st.subheader("Rate-limit settings (avoid 429)")
-    model_name = st.text_input("Model name", value="gemini-2.0-flash-exp", key="step4_model_name")
-    rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8)
-    products_per_request = st.number_input("Products per request (batch size)", min_value=1, max_value=12, value=4)
-    max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4)
+   model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step4_model_name")
+   rpm_limit = st.number_input("Max requests per minute (RPM)", min_value=1, max_value=60, value=8, key="step4_rpm_limit")
+   products_per_request = st.number_input("Products per request (batch size)", min_value=1, max_value=12, value=4, key="step4_products_per_request")
+   max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4, key="step4_max_retries")
+
 
 label_btn = st.button("🏷️ Run Product → Intent Labeling", type="primary", use_container_width=True)
 
