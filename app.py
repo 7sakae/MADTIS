@@ -236,22 +236,110 @@ else:
 st.divider()
 
 # ============================================================================
-# STEP 2: AI-POWERED ONTOLOGY GENERATION
+# STEP 2: AI-POWERED ONTOLOGY GENERATION (OR REUSE VIA UPLOAD)
 # ============================================================================
 st.header("Step 2: AI-Powered Ontology Generation")
+st.caption("Option A: Generate with Gemini • Option B: Upload a previously-downloaded ontology_v1.json to reuse")
 
 if "catalog_df" in st.session_state:
     catalog_df = st.session_state["catalog_df"]
 
-    st.subheader("🔑 API Configuration")
+    # -------------------------
+    # Option B: Reuse Ontology (Upload)
+    # -------------------------
+    st.subheader("♻️ Reuse Existing Ontology (Upload)")
 
+    with st.expander("Upload ontology_v1.json to reuse (recommended for demos / save quota)", expanded=True):
+        uploaded_ontology_json = st.file_uploader(
+            "Upload ontology JSON (e.g., ontology_v1.json)",
+            type=["json"],
+            key="upload_ontology_json"
+        )
+
+        col_u1, col_u2, col_u3 = st.columns([1, 1, 2])
+        with col_u1:
+            load_uploaded_ontology_btn = st.button("Load Uploaded Ontology", type="primary", key="load_uploaded_ontology_btn")
+        with col_u2:
+            clear_ontology_btn = st.button("Clear Ontology (session)", key="clear_ontology_btn")
+        with col_u3:
+            st.caption("Loads ontology + rebuilds dim_lifestyle and dim_intent in session_state. No API key needed.")
+
+        if clear_ontology_btn:
+            for k in ["ontology", "dim_lifestyle_df", "dim_intent_df"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.success("✅ Cleared ontology from session_state.")
+
+        if load_uploaded_ontology_btn:
+            if uploaded_ontology_json is None:
+                st.error("Please upload an ontology JSON file first.")
+            else:
+                try:
+                    ontology = json.loads(uploaded_ontology_json.read().decode("utf-8"))
+
+                    # Validate minimal structure
+                    if not isinstance(ontology, dict) or "lifestyles" not in ontology:
+                        raise ValueError("Invalid ontology JSON. Expected a dict with key: 'lifestyles'.")
+
+                    lifestyles = ontology.get("lifestyles", [])
+                    if not isinstance(lifestyles, list) or len(lifestyles) == 0:
+                        raise ValueError("Ontology JSON has no lifestyles (empty or invalid).")
+
+                    # Rebuild dim tables from ontology
+                    dim_lifestyle_rows, dim_intent_rows = [], []
+
+                    version = str(ontology.get("version", "v1"))
+                    for ls in lifestyles:
+                        ls_id = ls.get("lifestyle_id", "")
+                        ls_name = ls.get("lifestyle_name", "")
+                        ls_def = ls.get("definition", "")
+
+                        dim_lifestyle_rows.append({
+                            "lifestyle_id": ls_id,
+                            "lifestyle_name": ls_name,
+                            "definition": ls_def,
+                            "version": version
+                        })
+
+                        for it in ls.get("intents", []) or []:
+                            dim_intent_rows.append({
+                                "intent_id": it.get("intent_id", ""),
+                                "intent_name": it.get("intent_name", ""),
+                                "definition": it.get("definition", ""),
+                                "lifestyle_id": ls_id,
+                                "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
+                                "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                                "version": version
+                            })
+
+                    dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
+                    dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
+
+                    # Store in session_state
+                    st.session_state["ontology"] = ontology
+                    st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+                    st.session_state["dim_intent_df"] = dim_intent_df
+
+                    st.success(f"✅ Loaded ontology from upload: {len(dim_lifestyle_df)} lifestyles, {len(dim_intent_df)} intents")
+
+                except Exception as e:
+                    st.error(f"❌ Failed to load uploaded ontology: {e}")
+
+    st.divider()
+
+    # -------------------------
+    # Option A: Generate Ontology with Gemini
+    # -------------------------
+    st.subheader("🤖 Generate Ontology with AI (Gemini)")
+
+    # API key (only needed when generating)
     gemini_api_key = None
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
         gemini_api_key = st.secrets["GEMINI_API_KEY"]
         st.success("✅ Gemini API key loaded from secrets")
     else:
         gemini_api_key = st.text_input(
-            "Enter your Gemini API Key",
+            "Enter your Gemini API Key (only needed if you generate)",
             type="password",
             help="Get your API key from https://aistudio.google.com/apikey",
             key="gemini_key_step2"
@@ -259,55 +347,52 @@ if "catalog_df" in st.session_state:
         if gemini_api_key:
             st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
 
-    if not gemini_api_key:
-        st.warning("⚠️ Please provide a Gemini API key to generate ontology")
-        st.stop()
-
-    st.divider()
-
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader("Configuration")
+        st.write("**Ontology Settings**")
         n_lifestyles = st.number_input("Number of Lifestyle Categories", min_value=3, max_value=15, value=6, key="step2_n_lifestyles")
         max_intents_per_lifestyle = st.number_input("Max Intents per Lifestyle", min_value=2, max_value=10, value=5, key="step2_max_intents")
         chunk_size = st.number_input("Chunk Size (products per API call)", min_value=20, max_value=100, value=40, key="step2_chunk_size")
         language = st.selectbox("Output Language", ["en", "th", "zh", "ja", "es", "fr"], key="step2_lang")
 
     with col2:
-        st.subheader("Actions")
+        st.write("**Actions**")
         generate_btn = st.button("🤖 Generate with AI", type="primary", use_container_width=True, key="step2_generate_btn")
         st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
 
     if generate_btn:
-        try:
-            import google.generativeai as genai
-            import re
+        if not gemini_api_key:
+            st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
+        else:
+            try:
+                import google.generativeai as genai
+                import re
 
-            genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
+                genai.configure(api_key=gemini_api_key)
+                model = genai.GenerativeModel("gemini-2.5-flash")
 
-            def extract_json_from_text(text: str) -> dict:
-                text = text.strip()
-                if text.startswith("```"):
-                    lines = text.split("\n")
-                    text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
-                text = re.sub(r"^```json\s*", "", text)
-                text = re.sub(r"```\s*$", "", text)
-                return json.loads(text.strip())
+                def extract_json_from_text(text: str) -> dict:
+                    text = text.strip()
+                    if text.startswith("```"):
+                        lines = text.split("\n")
+                        text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+                    text = re.sub(r"^```json\s*", "", text)
+                    text = re.sub(r"```\s*$", "", text)
+                    return json.loads(text.strip())
 
-            all_product_texts = catalog_df["product_text"].tolist()
+                all_product_texts = catalog_df["product_text"].tolist()
 
-            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size}..."):
-                chunk_outputs = []
-                progress_bar = st.progress(0)
-                total_chunks = (len(all_product_texts) + int(chunk_size) - 1) // int(chunk_size)
+                with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size}..."):
+                    chunk_outputs = []
+                    progress_bar = st.progress(0)
+                    total_chunks = (len(all_product_texts) + int(chunk_size) - 1) // int(chunk_size)
 
-                for idx, start in enumerate(range(0, len(all_product_texts), int(chunk_size))):
-                    chunk = all_product_texts[start:start + int(chunk_size)]
-                    examples = "\n".join([f"- {t[:240]}" for t in chunk])
+                    for idx, start in enumerate(range(0, len(all_product_texts), int(chunk_size))):
+                        chunk = all_product_texts[start:start + int(chunk_size)]
+                        examples = "\n".join([f"- {t[:240]}" for t in chunk])
 
-                    prompt = f"""
+                        prompt = f"""
 You are proposing a Lifestyle→Intent ontology for retail marketing.
 
 Input: Product catalog examples (titles + descriptions):
@@ -339,25 +424,25 @@ Return STRICT minified JSON:
 }}
 """.strip()
 
-                    resp = model.generate_content(prompt)
-                    chunk_outputs.append(extract_json_from_text(resp.text))
-                    progress_bar.progress((idx + 1) / max(total_chunks, 1))
+                        resp = model.generate_content(prompt)
+                        chunk_outputs.append(extract_json_from_text(resp.text))
+                        progress_bar.progress((idx + 1) / max(total_chunks, 1))
 
-                st.success(f"✅ Analyzed {total_chunks} chunks")
+                    st.success(f"✅ Analyzed {total_chunks} chunks")
 
-            with st.spinner("🔄 Consolidating ontology..."):
-                pool = {}
-                for obj in chunk_outputs:
-                    for ls in obj.get("lifestyles", []):
-                        ls_name = ls.get("lifestyle_name", "").strip()
-                        if not ls_name:
-                            continue
-                        pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
-                        pool[ls_name]["intents"].extend(ls.get("intents", []))
+                with st.spinner("🔄 Consolidating ontology..."):
+                    pool = {}
+                    for obj in chunk_outputs:
+                        for ls in obj.get("lifestyles", []):
+                            ls_name = ls.get("lifestyle_name", "").strip()
+                            if not ls_name:
+                                continue
+                            pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
+                            pool[ls_name]["intents"].extend(ls.get("intents", []))
 
-                pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
+                    pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
 
-                prompt2 = f"""
+                    prompt2 = f"""
 You are consolidating multiple ontology proposals into ONE final ontology.
 
 Input pool (may contain duplicates/overlaps):
@@ -393,69 +478,72 @@ Return STRICT minified JSON:
 }}
 """.strip()
 
-                final = model.generate_content(prompt2)
-                ontology_data = extract_json_from_text(final.text)
+                    final = model.generate_content(prompt2)
+                    ontology_data = extract_json_from_text(final.text)
 
-                dim_lifestyle_rows, dim_intent_rows = [], []
-                for ls in ontology_data.get("lifestyles", []):
-                    dim_lifestyle_rows.append({
-                        "lifestyle_id": ls.get("lifestyle_id"),
-                        "lifestyle_name": ls.get("lifestyle_name"),
-                        "definition": ls.get("definition", ""),
-                        "version": "v1"
-                    })
-                    for it in ls.get("intents", []):
-                        dim_intent_rows.append({
-                            "intent_id": it.get("intent_id"),
-                            "intent_name": it.get("intent_name"),
-                            "definition": it.get("definition", ""),
+                    dim_lifestyle_rows, dim_intent_rows = [], []
+                    for ls in ontology_data.get("lifestyles", []):
+                        dim_lifestyle_rows.append({
                             "lifestyle_id": ls.get("lifestyle_id"),
-                            "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
-                            "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                            "lifestyle_name": ls.get("lifestyle_name"),
+                            "definition": ls.get("definition", ""),
                             "version": "v1"
                         })
+                        for it in ls.get("intents", []):
+                            dim_intent_rows.append({
+                                "intent_id": it.get("intent_id"),
+                                "intent_name": it.get("intent_name"),
+                                "definition": it.get("definition", ""),
+                                "lifestyle_id": ls.get("lifestyle_id"),
+                                "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
+                                "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                                "version": "v1"
+                            })
 
-                dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
-                dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
+                    dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
+                    dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
 
-                ontology = {
-                    "name": "AI-Generated Product Ontology",
-                    "version": "v1",
-                    "created_at": pd.Timestamp.now().isoformat(),
-                    "total_products": len(catalog_df),
-                    "model": "gemini-2.5-flash",
-                    "language": language,
-                    "lifestyles": ontology_data.get("lifestyles", []),
-                    "metadata": {
-                        "description": "AI-generated ontology from product catalog",
-                        "n_lifestyles": len(dim_lifestyle_df),
-                        "n_intents": len(dim_intent_df)
+                    ontology = {
+                        "name": "AI-Generated Product Ontology",
+                        "version": "v1",
+                        "created_at": pd.Timestamp.now().isoformat(),
+                        "total_products": len(catalog_df),
+                        "model": "gemini-2.5-flash",
+                        "language": language,
+                        "lifestyles": ontology_data.get("lifestyles", []),
+                        "metadata": {
+                            "description": "AI-generated ontology from product catalog",
+                            "n_lifestyles": len(dim_lifestyle_df),
+                            "n_intents": len(dim_intent_df)
+                        }
                     }
-                }
 
-                st.session_state["ontology"] = ontology
-                st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
-                st.session_state["dim_intent_df"] = dim_intent_df
+                    st.session_state["ontology"] = ontology
+                    st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+                    st.session_state["dim_intent_df"] = dim_intent_df
 
-                st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
+                    st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
 
-        except ImportError:
-            st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
-        except Exception as e:
-            st.error(f"❌ Error generating ontology: {str(e)}")
-            st.exception(e)
+            except ImportError:
+                st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+            except Exception as e:
+                st.error(f"❌ Error generating ontology: {str(e)}")
+                st.exception(e)
 
+    # -------------------------
+    # Display & Downloads (works for both generated or uploaded ontology)
+    # -------------------------
     if "ontology" in st.session_state:
         st.divider()
-        st.subheader("📥 Download Ontology Files")
+        st.subheader("📥 Ontology Files")
 
         ontology = st.session_state["ontology"]
-        dim_lifestyle_df = st.session_state["dim_lifestyle_df"]
-        dim_intent_df = st.session_state["dim_intent_df"]
+        dim_lifestyle_df = st.session_state.get("dim_lifestyle_df", pd.DataFrame())
+        dim_intent_df = st.session_state.get("dim_intent_df", pd.DataFrame())
 
-        t1, t2, t3 = st.tabs(["📋 Ontology JSON", "🎨 Lifestyle Dimensions", "🎯 Intent Dimensions"])
+        tab1, tab2, tab3 = st.tabs(["📋 Ontology JSON", "🎨 Lifestyle Dimensions", "🎯 Intent Dimensions"])
 
-        with t1:
+        with tab1:
             st.json(ontology)
             st.download_button(
                 label="📥 Download ontology_v1.json",
@@ -465,7 +553,7 @@ Return STRICT minified JSON:
                 use_container_width=True
             )
 
-        with t2:
+        with tab2:
             st.dataframe(dim_lifestyle_df, use_container_width=True)
             st.download_button(
                 label="📥 Download dim_lifestyle_v1.csv",
@@ -475,7 +563,7 @@ Return STRICT minified JSON:
                 use_container_width=True
             )
 
-        with t3:
+        with tab3:
             st.dataframe(dim_intent_df, use_container_width=True)
             st.download_button(
                 label="📥 Download dim_intent_v1.csv",
@@ -486,7 +574,7 @@ Return STRICT minified JSON:
             )
 
 else:
-    st.info("👆 Upload Product CSV in Step 1 to enable ontology generation.")
+    st.info("👆 Upload Product CSV in Step 1 to enable ontology generation or reuse.")
 
 # ============================================================================
 # STEP 3: CAMPAIGN BRIEF → WEIGHTED INTENT PROFILE (LLM) [RATE-LIMIT SAFE]
