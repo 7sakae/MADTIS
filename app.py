@@ -97,11 +97,109 @@ with st.expander("Step 0 — Campaign Input", expanded=True):
     mode = st.radio("Campaign input mode", ["Paste JSON", "Upload CSV"], horizontal=True)
 
     if mode == "Paste JSON":
-        default_json = [{
-            "campaign_id": "CAMP_VALENTINES",
-            "campaign_name": "Valentine's Day",
-            "campaign_brief": "Romantic gifting + date-night bundles: fragrance, chocolates, candles, dinner-at-home, self-care sets."
-        }]
+        default_json = [
+  {
+    "campaign_id": "CAMP_VALENTINES",
+    "campaign_name": "Valentine’s Day",
+    "campaign_brief": "Celebrate romance and affection with curated gifting and date-night bundles, featuring fragrances, chocolates, candles, dinner-at-home kits, and self-care sets designed for couples and self-love moments."
+  },
+  {
+    "campaign_id": "CAMP_MOTHERSDAY",
+    "campaign_name": "Mother’s Day",
+    "campaign_brief": "Focus on gratitude-driven gifting for moms and parents with comfort-forward home items, premium personal care, wellness essentials, and heartfelt gift sets that feel warm, thoughtful, and special."
+  },
+  {
+    "campaign_id": "CAMP_FATHERSDAY",
+    "campaign_name": "Father’s Day",
+    "campaign_brief": "Highlight practical and masculine-leaning gifting with grooming kits, tech accessories, tools, hobby-related items, and everyday utility bundles that feel useful while still being celebratory."
+  },
+  {
+    "campaign_id": "CAMP_GRAD",
+    "campaign_name": "Graduation Season",
+    "campaign_brief": "Support milestone gifting and career transition needs with productivity tech, professional bags, style essentials, desk upgrades, and meaningful keepsakes that mark the next chapter."
+  },
+  {
+    "campaign_id": "CAMP_WEDDING",
+    "campaign_name": "Wedding Season",
+    "campaign_brief": "Enable wedding and couple-focused gifting with premium bundles, home setup essentials, celebration-ready items, and registry-style picks that help newlyweds build a shared life."
+  },
+  {
+    "campaign_id": "CAMP_LUNAR_NEWYEAR",
+    "campaign_name": "Lunar New Year",
+    "campaign_brief": "Lean into family reunion and home hosting with auspicious gifting, festive table essentials, home refresh items, and celebration supplies that match tradition, luck, and togetherness."
+  },
+  {
+    "campaign_id": "CAMP_RAMADAN_EID",
+    "campaign_name": "Ramadan & Eid",
+    "campaign_brief": "Center family gatherings and culturally mindful hosting with food prep staples, modest personal care, home-serving essentials, and Eid gifting traditions that feel respectful and celebratory."
+  },
+  {
+    "campaign_id": "CAMP_DIWALI",
+    "campaign_name": "Diwali",
+    "campaign_brief": "Capture festive home celebration with lights and decor, new-outfit moments, sweet gifting, and traditional home items that elevate warmth, togetherness, and joyful rituals."
+  },
+  {
+    "campaign_id": "CAMP_EASTER",
+    "campaign_name": "Easter",
+    "campaign_brief": "Activate family gatherings and spring refresh with light home decor, seasonal sweets, small gifting bundles, and playful hosting items that fit cheerful, pastel, and fresh-start vibes."
+  },
+  {
+    "campaign_id": "CAMP_HALLOWEEN",
+    "campaign_name": "Halloween",
+    "campaign_brief": "Drive costumes and party hosting with themed decor, spooky accessories, trick-or-treat treats, and fun confectionery bundles that make celebrations easy and photogenic."
+  },
+  {
+    "campaign_id": "CAMP_THANKSGIVING",
+    "campaign_name": "Thanksgiving",
+    "campaign_brief": "Support hosting-heavy family meals with kitchen prep tools, serveware, comfort-driven home essentials, and warm seasonal items that make gatherings feel cozy and complete."
+  },
+  {
+    "campaign_id": "CAMP_BACKTOSCHOOL",
+    "campaign_name": "Back to School",
+    "campaign_brief": "Prepare students and parents for the new term with stationery, backpacks, learning gadgets, organizational tools, and study-friendly bundles that improve readiness and productivity."
+  },
+  {
+    "campaign_id": "CAMP_SUMMERTRAVEL",
+    "campaign_name": "Summer Travel / Vacation",
+    "campaign_brief": "Power travel prep and outdoor living with sun protection, beach gear, hydration essentials, lightweight packing sets, and convenient on-the-go kits for holidays and weekend trips."
+  },
+  {
+    "campaign_id": "CAMP_WINTERWARM",
+    "campaign_name": "Winter Warm-Up",
+    "campaign_brief": "Emphasize cold-season comfort and wellness with warm clothing, protective gear, soothing personal care, and cozy home items that support staying warm, healthy, and relaxed."
+  },
+  {
+    "campaign_id": "CAMP_SPRINGCLEAN",
+    "campaign_name": "Spring Cleaning / Home Refresh",
+    "campaign_brief": "Motivate a seasonal reset with cleaning supplies, storage solutions, decluttering tools, and home-organization bundles that make refresh projects feel simple and satisfying."
+  },
+  {
+    "campaign_id": "CAMP_NEWYEAR",
+    "campaign_name": "New Year / Fresh Start",
+    "campaign_brief": "Tap into renewal and goal-setting with home reset items, wellness routines, productivity upgrades, and “new year, new habits” bundles that help customers start strong and feel refreshed."
+  },
+  {
+    "campaign_id": "CAMP_MIDAUTUMN",
+    "campaign_name": "Mid-Autumn Festival",
+    "campaign_brief": "Celebrate family togetherness and seasonal traditions with mooncake gifting, tea and table pairings, premium snack bundles, lantern-themed decor, and hosting essentials for reunion moments."
+  },
+  {
+    "campaign_id": "CAMP_SONGKRAN",
+    "campaign_name": "Songkran / Water Festival",
+    "campaign_brief": "Support Thailand’s summer celebration with travel-friendly essentials, waterproof accessories, skincare and sun protection, festive outfits, and refreshing bundles for fun days out and family visits."
+  },
+  {
+    "campaign_id": "CAMP_LOYKRATHONG",
+    "campaign_name": "Loy Krathong / Festival of Lights",
+    "campaign_brief": "Lean into evening outings and tradition with floral and candle-inspired items, beauty-ready prep, giftable sets, and light decorative touches that match the romantic, reflective festival mood."
+  },
+  {
+    "campaign_id": "CAMP_CHRISTMAS",
+    "campaign_name": "Christmas / Year-End Holidays",
+    "campaign_brief": "Enable gift-giving and festive hosting with home decor, family celebration sets, premium style gifts, party-ready bundles, and seasonal treats that fit end-of-year togetherness."
+  }
+]
+
         json_text = st.text_area("Campaign JSON", value=json.dumps(default_json, indent=2), height=180)
         if st.button("Load Campaigns (JSON)"):
             try:
