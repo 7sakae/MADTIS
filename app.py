@@ -1221,7 +1221,8 @@ if st.session_state.get("campaign_intent_profile_df") is not None:
 
 if st.session_state.get("campaign_intent_profiles_json") is not None:
     st.subheader("📦 Campaign Intent Profiles (JSON)")
-    st.json(st.session_state["campaign_intent_profiles_json"][:50])
+    with st.expander("Preview JSON (collapsed)", expanded=False):
+        st.json(st.session_state["campaign_intent_profiles_json"][:50])
     st.caption("Showing first 50 campaigns in JSON preview.")
 
     st.download_button(
@@ -1598,9 +1599,11 @@ if st.session_state.get("product_intent_labels_df") is not None:
     )
 
 if st.session_state.get("product_intent_labels_json") is not None:
-    st.subheader("📦 Product → Intent Labels (JSON)")
-    st.json(st.session_state["product_intent_labels_json"][:25])
+    st.subheader("📦 Product Intent Labels (JSON)")
+    with st.expander("Preview JSON (collapsed)", expanded=False):
+        st.json(st.session_state["product_intent_labels_json"][:25])
     st.caption("Showing first 25 products in JSON preview.")
+
     st.download_button(
         "📥 Download product_intent_labels.json",
         data=json.dumps(st.session_state["product_intent_labels_json"], ensure_ascii=False, indent=2),
