@@ -1,6 +1,227 @@
 import streamlit as st
 import pandas as pd
 import json
+import re
+import time
+import random
+
+# =========================
+# LLM JSON Robust Helpers
+# =========================
+
+def trim_to_balanced_json(s: str) -> str:
+    """
+    Trim to the first complete JSON object/array (balanced braces/brackets),
+    respecting quoted strings and escapes.
+    """
+    stack = []
+    in_str = False
+    esc = False
+
+    for i, ch in enumerate(s):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+
+        if ch == '"':
+            in_str = True
+            continue
+
+        if ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if not stack:
+                return s[:i + 1]
+            expected = stack[-1]
+            if ch != expected:
+                return s[:i + 1]
+            stack.pop()
+            if not stack:
+                return s[:i + 1]
+
+    return s
+
+
+def repair_unescaped_quotes_in_strings(s: str) -> str:
+    """
+    Repairs the common LLM bug:
+    "reason":"The "autumn-scented" aspect..."
+                 ^ unescaped quote inside string
+    Strategy: while inside a JSON string, if we see a quote that DOESN'T look like
+    the end of the string (next non-space not in ,}] ), convert it to a single quote.
+    """
+    out = []
+    in_str = False
+    esc = False
+
+    for i, ch in enumerate(s):
+        if in_str:
+            if esc:
+                out.append(ch)
+                esc = False
+                continue
+
+            if ch == "\\":
+                out.append(ch)
+                esc = True
+                continue
+
+            if ch == '"':
+                # Peek ahead to decide if this is end-of-string or an internal quote
+                j = i + 1
+                while j < len(s) and s[j] in " \r\n\t":
+                    j += 1
+
+                if j >= len(s) or s[j] in ",}]":
+                    # Looks like a real closing quote
+                    in_str = False
+                    out.append('"')
+                else:
+                    # Looks like an unescaped internal quote -> replace
+                    out.append("'")
+                continue
+
+            out.append(ch)
+        else:
+            if ch == '"':
+                in_str = True
+            out.append(ch)
+
+    return "".join(out)
+
+
+def extract_json_from_text_robust(raw: str):
+    """
+    Handles:
+    - ```json fences
+    - leading commentary before JSON
+    - trailing commentary after JSON
+    - trims to first balanced JSON object/array
+    - repairs unescaped quotes inside strings (1 retry)
+    """
+    text = (raw or "").strip()
+
+    # Remove fences if present
+    text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```\s*$", "", text)
+
+    # Find first { or [
+    starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
+    if not starts:
+        raise json.JSONDecodeError("No JSON object/array found in model output", text, 0)
+
+    text = text[min(starts):].strip()
+    text = trim_to_balanced_json(text).strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        fixed = repair_unescaped_quotes_in_strings(text)
+        return json.loads(fixed)
+
+
+def debug_json_error(raw: str, e: json.JSONDecodeError, context: int = 180) -> str:
+    s = raw or ""
+    i = getattr(e, "pos", 0)
+    start = max(0, i - context)
+    end = min(len(s), i + context)
+    snippet = s[start:end]
+    caret_pos = max(0, i - start)
+    return (
+        f"{str(e)}\n"
+        f"--- context around char {i} ---\n"
+        f"{snippet}\n"
+        f"{' ' * caret_pos}^\n"
+    )
+
+
+def parse_retry_delay_seconds(err_text: str) -> int:
+    m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
+    return int(m.group(1)) if m else 0
+
+
+def make_gemini_model(api_key: str, model_name: str, json_mode: bool = True, temperature: float = 0.2):
+    """
+    Creates a Gemini model with JSON mode enabled (strongly reduces broken JSON).
+    """
+    import google.generativeai as genai
+    genai.configure(api_key=api_key)
+
+    if json_mode:
+        try:
+            gen_cfg = genai.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=temperature
+            )
+            return genai.GenerativeModel(model_name, generation_config=gen_cfg)
+        except Exception:
+            # Fallback if GenerationConfig signature differs
+            return genai.GenerativeModel(model_name)
+
+    return genai.GenerativeModel(model_name)
+
+
+def call_llm_with_retry(model, prompt: str, rpm_limit: int, max_retries: int, last_ts_key: str):
+    """
+    Throttle + retry 429-safe call. Stores timestamp in st.session_state[last_ts_key].
+    """
+    min_interval = 60.0 / max(float(rpm_limit), 1.0)
+
+    last_call = st.session_state.get(last_ts_key, 0.0)
+    now = time.time()
+    wait = (last_call + min_interval) - now
+    if wait > 0:
+        time.sleep(wait)
+
+    for attempt in range(int(max_retries) + 1):
+        try:
+            resp = model.generate_content(prompt)
+            st.session_state[last_ts_key] = time.time()
+            return getattr(resp, "text", "") or ""
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
+                retry_s = parse_retry_delay_seconds(msg)
+                if retry_s <= 0:
+                    retry_s = int(min(60, (2 ** attempt) * 5))
+                retry_s = retry_s + random.randint(1, 3)
+                st.warning(
+                    f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... "
+                    f"(attempt {attempt+1}/{int(max_retries)+1})"
+                )
+                time.sleep(retry_s)
+                continue
+            raise
+
+    raise RuntimeError("Exceeded retry attempts due to rate limiting.")
+
+
+def chunk_df(df, size: int):
+    for start in range(0, len(df), size):
+        yield df.iloc[start:start + size]
+
+
+def clamp01(x):
+    try:
+        v = float(x)
+    except Exception:
+        return 0.0
+    if v < 0:
+        return 0.0
+    if v > 1:
+        return 1.0
+    return v
+
+
+def safe_json_snippet(obj, max_chars=16000):
+    txt = json.dumps(obj, ensure_ascii=False)
+    return txt[:max_chars]
+
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -19,102 +240,104 @@ campaigns_df = None
 
 if input_mode == "Paste JSON":
     default_json = [
-  {
-    "campaign_id": "CAMP_VALENTINES",
-    "campaign_name": "Valentine’s Day",
-    "campaign_brief": "Celebrate romance and affection with curated gifting and date-night bundles, featuring fragrances, chocolates, candles, dinner-at-home kits, and self-care sets designed for couples and self-love moments."
-  },
-  {
-    "campaign_id": "CAMP_MOTHERSDAY",
-    "campaign_name": "Mother’s Day",
-    "campaign_brief": "Focus on gratitude-driven gifting for moms and parents with comfort-forward home items, premium personal care, wellness essentials, and heartfelt gift sets that feel warm, thoughtful, and special."
-  },
-  {
-    "campaign_id": "CAMP_FATHERSDAY",
-    "campaign_name": "Father’s Day",
-    "campaign_brief": "Highlight practical and utility-led gifting with grooming kits, tech accessories, tools, hobby-related items, and everyday bundles that feel useful while still being celebratory."
-  },
-  {
-    "campaign_id": "CAMP_GRAD",
-    "campaign_name": "Graduation Season",
-    "campaign_brief": "Support milestone gifting and career transition needs with productivity tech, professional bags, style essentials, desk upgrades, and meaningful keepsakes that mark the next chapter."
-  },
-  {
-    "campaign_id": "CAMP_WEDDING",
-    "campaign_name": "Wedding Season",
-    "campaign_brief": "Enable wedding and couple-focused gifting with premium bundles, home setup essentials, celebration-ready items, and registry-style picks that help newlyweds build a shared life."
-  },
-  {
-    "campaign_id": "CAMP_LUNAR_NEWYEAR",
-    "campaign_name": "Lunar New Year",
-    "campaign_brief": "Lean into family reunion and home hosting with auspicious gifting, festive table essentials, home refresh items, and celebration supplies that match tradition, luck, and togetherness."
-  },
-  {
-    "campaign_id": "CAMP_RAMADAN_EID",
-    "campaign_name": "Ramadan & Eid",
-    "campaign_brief": "Center family gatherings and culturally mindful hosting with food prep staples, modest personal care, home-serving essentials, and Eid gifting traditions that feel respectful and celebratory."
-  },
-  {
-    "campaign_id": "CAMP_DIWALI",
-    "campaign_name": "Diwali",
-    "campaign_brief": "Capture festive home celebration with lights and decor, new-outfit moments, sweet gifting, and traditional home items that elevate warmth, togetherness, and joyful rituals."
-  },
-  {
-    "campaign_id": "CAMP_EASTER",
-    "campaign_name": "Easter",
-    "campaign_brief": "Activate family gatherings and spring refresh with light home decor, seasonal sweets, small gifting bundles, and playful hosting items that fit cheerful, pastel, and fresh-start vibes."
-  },
-  {
-    "campaign_id": "CAMP_HALLOWEEN",
-    "campaign_name": "Halloween",
-    "campaign_brief": "Drive costumes and party hosting with themed decor, spooky accessories, trick-or-treat treats, and fun confectionery bundles that make celebrations easy and photogenic."
-  },
-  {
-    "campaign_id": "CAMP_THANKSGIVING",
-    "campaign_name": "Thanksgiving",
-    "campaign_brief": "Support hosting-heavy family meals with kitchen prep tools, serveware, comfort-driven home essentials, and warm seasonal items that make gatherings feel cozy and complete."
-  },
-  {
-    "campaign_id": "CAMP_BACKTOSCHOOL",
-    "campaign_name": "Back to School",
-    "campaign_brief": "Prepare students and parents for the new term with stationery, backpacks, learning gadgets, organizational tools, and study-friendly bundles that improve readiness and productivity."
-  },
-  {
-    "campaign_id": "CAMP_SUMMERTRAVEL",
-    "campaign_name": "Summer Travel / Vacation",
-    "campaign_brief": "Power travel prep and outdoor living with sun protection, beach gear, hydration essentials, lightweight packing sets, and convenient on-the-go kits for holidays and weekend trips."
-  },
-  {
-    "campaign_id": "CAMP_WINTERWARM",
-    "campaign_name": "Winter Warm-Up",
-    "campaign_brief": "Emphasize cold-season comfort and wellness with warm clothing, protective gear, soothing personal care, and cozy home items that support staying warm, healthy, and relaxed."
-  },
-  {
-    "campaign_id": "CAMP_SPRINGCLEAN",
-    "campaign_name": "Spring Cleaning / Home Refresh",
-    "campaign_brief": "Motivate a seasonal reset with cleaning supplies, storage solutions, decluttering tools, and home-organization bundles that make refresh projects feel simple and satisfying."
-  },
-  {
-    "campaign_id": "CAMP_NEWYEAR",
-    "campaign_name": "New Year / Fresh Start",
-    "campaign_brief": "Tap into renewal and goal-setting with home reset items, wellness routines, productivity upgrades, and “new year, new habits” bundles that help customers start strong and feel refreshed."
-  },
-  {
-    "campaign_id": "CAMP_MIDAUTUMN",
-    "campaign_name": "Mid-Autumn Festival",
-    "campaign_brief": "Celebrate family togetherness and seasonal traditions with mooncake gifting, tea and table pairings, premium snack bundles, lantern-themed decor, and hosting essentials for reunion moments."
-  },
-  {
-    "campaign_id": "CAMP_CHRISTMAS",
-    "campaign_name": "Christmas / Year-End Holidays",
-    "campaign_brief": "Enable gift-giving and festive hosting with home decor, family celebration sets, premium style gifts, party-ready bundles, and seasonal treats that fit end-of-year togetherness."
-  }
-]
+        {
+            "campaign_id": "CAMP_VALENTINES",
+            "campaign_name": "Valentine’s Day",
+            "campaign_brief": "Celebrate romance and affection with curated gifting and date-night bundles, featuring fragrances, chocolates, candles, dinner-at-home kits, and self-care sets designed for couples and self-love moments."
+        },
+        {
+            "campaign_id": "CAMP_MOTHERSDAY",
+            "campaign_name": "Mother’s Day",
+            "campaign_brief": "Focus on gratitude-driven gifting for moms and parents with comfort-forward home items, premium personal care, wellness essentials, and heartfelt gift sets that feel warm, thoughtful, and special."
+        },
+        {
+            "campaign_id": "CAMP_FATHERSDAY",
+            "campaign_name": "Father’s Day",
+            "campaign_brief": "Highlight practical and utility-led gifting with grooming kits, tech accessories, tools, hobby-related items, and everyday bundles that feel useful while still being celebratory."
+        },
+        {
+            "campaign_id": "CAMP_GRAD",
+            "campaign_name": "Graduation Season",
+            "campaign_brief": "Support milestone gifting and career transition needs with productivity tech, professional bags, style essentials, desk upgrades, and meaningful keepsakes that mark the next chapter."
+        },
+        {
+            "campaign_id": "CAMP_WEDDING",
+            "campaign_name": "Wedding Season",
+            "campaign_brief": "Enable wedding and couple-focused gifting with premium bundles, home setup essentials, celebration-ready items, and registry-style picks that help newlyweds build a shared life."
+        },
+        {
+            "campaign_id": "CAMP_LUNAR_NEWYEAR",
+            "campaign_name": "Lunar New Year",
+            "campaign_brief": "Lean into family reunion and home hosting with auspicious gifting, festive table essentials, home refresh items, and celebration supplies that match tradition, luck, and togetherness."
+        },
+        {
+            "campaign_id": "CAMP_RAMADAN_EID",
+            "campaign_name": "Ramadan & Eid",
+            "campaign_brief": "Center family gatherings and culturally mindful hosting with food prep staples, modest personal care, home-serving essentials, and Eid gifting traditions that feel respectful and celebratory."
+        },
+        {
+            "campaign_id": "CAMP_DIWALI",
+            "campaign_name": "Diwali",
+            "campaign_brief": "Capture festive home celebration with lights and decor, new-outfit moments, sweet gifting, and traditional home items that elevate warmth, togetherness, and joyful rituals."
+        },
+        {
+            "campaign_id": "CAMP_EASTER",
+            "campaign_name": "Easter",
+            "campaign_brief": "Activate family gatherings and spring refresh with light home decor, seasonal sweets, small gifting bundles, and playful hosting items that fit cheerful, pastel, and fresh-start vibes."
+        },
+        {
+            "campaign_id": "CAMP_HALLOWEEN",
+            "campaign_name": "Halloween",
+            "campaign_brief": "Drive costumes and party hosting with themed decor, spooky accessories, trick-or-treat treats, and fun confectionery bundles that make celebrations easy and photogenic."
+        },
+        {
+            "campaign_id": "CAMP_THANKSGIVING",
+            "campaign_name": "Thanksgiving",
+            "campaign_brief": "Support hosting-heavy family meals with kitchen prep tools, serveware, comfort-driven home essentials, and warm seasonal items that make gatherings feel cozy and complete."
+        },
+        {
+            "campaign_id": "CAMP_BACKTOSCHOOL",
+            "campaign_name": "Back to School",
+            "campaign_brief": "Prepare students and parents for the new term with stationery, backpacks, learning gadgets, organizational tools, and study-friendly bundles that improve readiness and productivity."
+        },
+        {
+            "campaign_id": "CAMP_SUMMERTRAVEL",
+            "campaign_name": "Summer Travel / Vacation",
+            "campaign_brief": "Power travel prep and outdoor living with sun protection, beach gear, hydration essentials, lightweight packing sets, and convenient on-the-go kits for holidays and weekend trips."
+        },
+        {
+            "campaign_id": "CAMP_WINTERWARM",
+            "campaign_name": "Winter Warm-Up",
+            "campaign_brief": "Emphasize cold-season comfort and wellness with warm clothing, protective gear, soothing personal care, and cozy home items that support staying warm, healthy, and relaxed."
+        },
+        {
+            "campaign_id": "CAMP_SPRINGCLEAN",
+            "campaign_name": "Spring Cleaning / Home Refresh",
+            "campaign_brief": "Motivate a seasonal reset with cleaning supplies, storage solutions, decluttering tools, and home-organization bundles that make refresh projects feel simple and satisfying."
+        },
+        {
+            "campaign_id": "CAMP_NEWYEAR",
+            "campaign_name": "New Year / Fresh Start",
+            "campaign_brief": "Tap into renewal and goal-setting with home reset items, wellness routines, productivity upgrades, and “new year, new habits” bundles that help customers start strong and feel refreshed."
+        },
+        {
+            "campaign_id": "CAMP_MIDAUTUMN",
+            "campaign_name": "Mid-Autumn Festival",
+            "campaign_brief": "Celebrate family togetherness and seasonal traditions with mooncake gifting, tea and table pairings, premium snack bundles, lantern-themed decor, and hosting essentials for reunion moments."
+        },
+        {
+            "campaign_id": "CAMP_CHRISTMAS",
+            "campaign_name": "Christmas / Year-End Holidays",
+            "campaign_brief": "Enable gift-giving and festive hosting with home decor, family celebration sets, premium style gifts, party-ready bundles, and seasonal treats that fit end-of-year togetherness."
+        }
+    ]
+
     json_text = st.text_area(
         "Paste campaign JSON (one campaign object or a list of objects)",
-        value=json.dumps(default_json, indent=2),
+        value=json.dumps(default_json, indent=2, ensure_ascii=False),
         height=220
     )
+
     if st.button("Load JSON", type="primary", key="load_campaign_json"):
         try:
             obj = json.loads(json_text)
@@ -126,6 +349,7 @@ if input_mode == "Paste JSON":
                 campaigns_df = pd.DataFrame(obj)
         except Exception as e:
             st.error(f"Invalid JSON: {e}")
+
 else:
     uploaded = st.file_uploader("Upload a campaigns CSV", type=["csv"], key="campaign_csv")
     if uploaded is not None:
@@ -301,27 +525,26 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
 
         st.write("**Top 10 Products by Transaction Count**")
         top_products = (
-        txn_df.groupby("product_id")
-        .size()
-        .sort_values(ascending=False)
-        .head(10)
-        .reset_index(name="transaction_count")
+            txn_df.groupby("product_id")
+            .size()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index(name="transaction_count")
         )
-        
+
         top_products = top_products.merge(
             catalog_df[["product_id", "product_name"]],
             on="product_id",
             how="left"
         )
-        
+
         top_products = top_products.rename(columns={
             "product_id": "Product ID",
             "product_name": "Product Name",
             "transaction_count": "Transaction Count"
         })
-    
-    st.dataframe(top_products[["Product ID", "Product Name", "Transaction Count"]], use_container_width=True)
 
+        st.dataframe(top_products[["Product ID", "Product Name", "Transaction Count"]], use_container_width=True)
 
 else:
     st.info("👆 Upload both Product and Transaction CSV files to see the data summary.")
@@ -370,7 +593,6 @@ if "catalog_df" in st.session_state:
                 try:
                     ontology = json.loads(uploaded_ontology_json.read().decode("utf-8"))
 
-                    # Validate minimal structure
                     if not isinstance(ontology, dict) or "lifestyles" not in ontology:
                         raise ValueError("Invalid ontology JSON. Expected a dict with key: 'lifestyles'.")
 
@@ -378,10 +600,9 @@ if "catalog_df" in st.session_state:
                     if not isinstance(lifestyles, list) or len(lifestyles) == 0:
                         raise ValueError("Ontology JSON has no lifestyles (empty or invalid).")
 
-                    # Rebuild dim tables from ontology
                     dim_lifestyle_rows, dim_intent_rows = [], []
-
                     version = str(ontology.get("version", "v1"))
+
                     for ls in lifestyles:
                         ls_id = ls.get("lifestyle_id", "")
                         ls_name = ls.get("lifestyle_name", "")
@@ -408,7 +629,6 @@ if "catalog_df" in st.session_state:
                     dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
                     dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
 
-                    # Store in session_state
                     st.session_state["ontology"] = ontology
                     st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
                     st.session_state["dim_intent_df"] = dim_intent_df
@@ -425,7 +645,6 @@ if "catalog_df" in st.session_state:
     # -------------------------
     st.subheader("🤖 Generate Ontology with AI (Gemini)")
 
-    # API key (only needed when generating)
     gemini_api_key = None
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
         gemini_api_key = st.secrets["GEMINI_API_KEY"]
@@ -459,20 +678,7 @@ if "catalog_df" in st.session_state:
             st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
         else:
             try:
-                import google.generativeai as genai
-                import re
-
-                genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel("gemini-2.5-flash")
-
-                def extract_json_from_text(text: str) -> dict:
-                    text = text.strip()
-                    if text.startswith("```"):
-                        lines = text.split("\n")
-                        text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
-                    text = re.sub(r"^```json\s*", "", text)
-                    text = re.sub(r"```\s*$", "", text)
-                    return json.loads(text.strip())
+                model = make_gemini_model(gemini_api_key, "gemini-2.5-flash", json_mode=True, temperature=0.2)
 
                 all_product_texts = catalog_df["product_text"].tolist()
 
@@ -498,27 +704,30 @@ Task:
   include_examples (2–3), exclude_examples (1–2).
 - Output language: {language}
 
+Rules:
+- Return JSON ONLY. No markdown. No extra text.
+- Do NOT use double quotes inside any string fields. Use parentheses or single quotes if needed.
+
 Return STRICT minified JSON:
-{{
-  "lifestyles":[
-    {{
-      "lifestyle_name":"...",
-      "definition":"...",
-      "intents":[
-        {{
-          "intent_name":"...",
-          "definition":"...",
-          "include_examples":["..."],
-          "exclude_examples":["..."]
-        }}
-      ]
-    }}
-  ]
-}}
+{{"lifestyles":[{{"lifestyle_name":"...","definition":"...","intents":[{{"intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                        resp = model.generate_content(prompt)
-                        chunk_outputs.append(extract_json_from_text(resp.text))
+                        raw = call_llm_with_retry(
+                            model=model,
+                            prompt=prompt,
+                            rpm_limit=8,
+                            max_retries=4,
+                            last_ts_key="_last_llm_call_ts_step2"
+                        )
+
+                        try:
+                            chunk_outputs.append(extract_json_from_text_robust(raw))
+                        except json.JSONDecodeError as e:
+                            st.error("❌ Invalid JSON returned by the model (Step 2 chunk).")
+                            st.code(debug_json_error(raw, e))
+                            st.code((raw or "")[:1200])
+                            st.stop()
+
                         progress_bar.progress((idx + 1) / max(total_chunks, 1))
 
                     st.success(f"✅ Analyzed {total_chunks} chunks")
@@ -527,7 +736,7 @@ Return STRICT minified JSON:
                     pool = {}
                     for obj in chunk_outputs:
                         for ls in obj.get("lifestyles", []):
-                            ls_name = ls.get("lifestyle_name", "").strip()
+                            ls_name = str(ls.get("lifestyle_name", "")).strip()
                             if not ls_name:
                                 continue
                             pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
@@ -550,29 +759,29 @@ Task:
    - intent_id: IN_...
 5) Keep include/exclude examples concise.
 
+Rules:
+- Return JSON ONLY. No markdown. No extra text.
+- Do NOT use double quotes inside any string fields. Use parentheses or single quotes if needed.
+
 Return STRICT minified JSON:
-{{
-  "lifestyles":[
-    {{
-      "lifestyle_id":"LS_...",
-      "lifestyle_name":"...",
-      "definition":"...",
-      "intents":[
-        {{
-          "intent_id":"IN_...",
-          "intent_name":"...",
-          "definition":"...",
-          "include_examples":["..."],
-          "exclude_examples":["..."]
-        }}
-      ]
-    }}
-  ]
-}}
+{{"lifestyles":[{{"lifestyle_id":"LS_...","lifestyle_name":"...","definition":"...","intents":[{{"intent_id":"IN_...","intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                    final = model.generate_content(prompt2)
-                    ontology_data = extract_json_from_text(final.text)
+                    raw2 = call_llm_with_retry(
+                        model=model,
+                        prompt=prompt2,
+                        rpm_limit=8,
+                        max_retries=4,
+                        last_ts_key="_last_llm_call_ts_step2"
+                    )
+
+                    try:
+                        ontology_data = extract_json_from_text_robust(raw2)
+                    except json.JSONDecodeError as e:
+                        st.error("❌ Invalid JSON returned by the model (Step 2 consolidation).")
+                        st.code(debug_json_error(raw2, e))
+                        st.code((raw2 or "")[:1200])
+                        st.stop()
 
                     dim_lifestyle_rows, dim_intent_rows = [], []
                     for ls in ontology_data.get("lifestyles", []):
@@ -671,17 +880,11 @@ else:
 
 # ============================================================================
 # STEP 3: CAMPAIGN → WEIGHTED INTENT PROFILE (LLM)  +  (UPLOAD TO REUSE)
-# Update:
-# - Can UPLOAD an existing campaign_intent_profile.csv to proceed to Step 4
-# - If uploaded, Step 4 can run WITHOUT needing to "match campaign and its intents"
-#   (we just carry the profile as a marketing artifact / for audit; product labeling remains campaign-agnostic)
 # ============================================================================
-
 st.divider()
 st.header("Step 3: Campaign → Weighted Intent Profile (LLM)")
 st.caption("Option A: Generate with Gemini • Option B: Upload an existing campaign_intent_profile.csv for reuse (no LLM).")
 
-# Preconditions for Step 3 existence (ontology needed for generation, but upload can work with minimal checks)
 if "campaigns_df" not in st.session_state:
     st.info("👆 Please load campaign input in Step 0 first.")
     st.stop()
@@ -729,32 +932,27 @@ with st.expander("Upload campaign_intent_profile.csv to reuse (recommended for d
                 df_up = pd.read_csv(uploaded_campaign_profile)
                 df_up.columns = df_up.columns.str.strip().str.lower()
 
-                # Minimal required columns for reuse
                 required_cols = {"campaign_id", "intent_id", "weight"}
                 missing = required_cols - set(df_up.columns)
                 if missing:
                     st.error(f"❌ Missing columns in uploaded CSV: {sorted(list(missing))}")
                     st.info(f"Found columns: {df_up.columns.tolist()}")
                 else:
-                    # Normalize types
                     df_up["campaign_id"] = df_up["campaign_id"].astype(str)
                     df_up["intent_id"] = df_up["intent_id"].astype(str)
                     df_up["weight"] = pd.to_numeric(df_up["weight"], errors="coerce").fillna(0.0)
 
-                    # Optional columns
                     if "campaign_name" not in df_up.columns:
-                        # try to join from campaigns_df
                         df_up = df_up.merge(
                             campaigns_df[["campaign_id", "campaign_name"]],
                             on="campaign_id",
                             how="left"
                         )
+
                     if "rank" not in df_up.columns:
-                        # build rank per campaign
                         df_up = df_up.sort_values(["campaign_id", "weight"], ascending=[True, False]).copy()
                         df_up["rank"] = df_up.groupby("campaign_id").cumcount() + 1
 
-                    # Normalize weights within each campaign (safe)
                     def _norm_group(g):
                         s = g["weight"].sum()
                         if s <= 0:
@@ -765,10 +963,8 @@ with st.expander("Upload campaign_intent_profile.csv to reuse (recommended for d
 
                     df_up = df_up.groupby("campaign_id", group_keys=False).apply(_norm_group)
 
-                    # Store in session_state
                     st.session_state["campaign_intent_profile_df"] = df_up
 
-                    # Also build a compact JSON (optional, for Step 4 or audit)
                     profiles_json = []
                     for cid, g in df_up.sort_values(["campaign_id", "rank"]).groupby("campaign_id"):
                         cname = ""
@@ -809,7 +1005,6 @@ if "ontology" not in st.session_state or "dim_intent_df" not in st.session_state
 else:
     dim_intent_df = st.session_state["dim_intent_df"].copy()
 
-    # API key
     st.write("**🔑 API Configuration**")
     gemini_api_key = None
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
@@ -825,7 +1020,6 @@ else:
     if not gemini_api_key:
         st.warning("⚠️ Provide API key only if you want to generate. (Or upload reuse above.)")
 
-    # Controls
     left, right = st.columns([2, 1])
 
     with left:
@@ -848,7 +1042,7 @@ else:
             key="step3_generate_btn"
         )
 
-    # Build intent candidates (keep prompt concise)
+    # intent candidates
     intent_candidates = []
     for _, r in dim_intent_df.iterrows():
         intent_candidates.append({
@@ -858,11 +1052,7 @@ else:
             "lifestyle_id": str(r.get("lifestyle_id", "")).strip(),
         })
 
-    def _safe_json_snippet(obj, max_chars=16000):
-        txt = json.dumps(obj, ensure_ascii=False)
-        return txt[:max_chars]
-
-    intent_snippet = _safe_json_snippet(intent_candidates)
+    intent_snippet = safe_json_snippet(intent_candidates, max_chars=16000)
 
     def normalize_weights(items):
         w = [float(x.get("weight", 0)) for x in items]
@@ -879,25 +1069,6 @@ else:
             items[0]["weight"] = round(items[0]["weight"] + drift, 4)
         return items
 
-    def extract_json_from_text(text: str) -> dict:
-        import re
-        text = text.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
-        text = re.sub(r"^```json\s*", "", text)
-        text = re.sub(r"```\s*$", "", text)
-        return json.loads(text.strip())
-
-    def parse_retry_delay_seconds(err_text: str) -> int:
-        import re
-        m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
-        return int(m.group(1)) if m else 0
-
-    def chunk_df(df, size: int):
-        for start in range(0, len(df), size):
-            yield df.iloc[start:start+size]
-
     if "campaign_intent_profile_df" not in st.session_state:
         st.session_state["campaign_intent_profile_df"] = None
     if "campaign_intent_profiles_json" not in st.session_state:
@@ -908,14 +1079,7 @@ else:
             st.error("Please provide a Gemini API key to generate (or use upload reuse above).")
         else:
             try:
-                import time
-                import random
-                import google.generativeai as genai
-
-                genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel(model_name)
-
-                min_interval = 60.0 / float(rpm_limit)
+                model = make_gemini_model(gemini_api_key, model_name, json_mode=True, temperature=0.2)
 
                 existing_rows = []
                 existing_profiles = []
@@ -925,34 +1089,6 @@ else:
                     existing_profiles = list(st.session_state["campaign_intent_profiles_json"])
 
                 already_done = set([p["campaign_id"] for p in existing_profiles if "campaign_id" in p])
-
-                def call_llm_with_retry(prompt: str):
-                    last_call = st.session_state.get("_last_llm_call_ts_step3", 0.0)
-                    now = time.time()
-                    wait = (last_call + min_interval) - now
-                    if wait > 0:
-                        time.sleep(wait)
-
-                    for attempt in range(int(max_retries) + 1):
-                        try:
-                            resp = model.generate_content(prompt)
-                            st.session_state["_last_llm_call_ts_step3"] = time.time()
-                            return resp.text
-                        except Exception as e:
-                            msg = str(e)
-                            if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
-                                retry_s = parse_retry_delay_seconds(msg)
-                                if retry_s <= 0:
-                                    retry_s = int(min(60, (2 ** attempt) * 5))
-                                retry_s = retry_s + random.randint(1, 3)
-                                st.warning(
-                                    f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... "
-                                    f"(attempt {attempt+1}/{int(max_retries)+1})"
-                                )
-                                time.sleep(retry_s)
-                                continue
-                            raise
-                    raise RuntimeError("Exceeded retry attempts due to rate limiting.")
 
                 lifestyle_note = ""
                 if include_lifestyle_context:
@@ -994,7 +1130,7 @@ Input campaigns (JSON):
 {json.dumps(batch_campaigns, ensure_ascii=False)}
 
 Task for EACH campaign:
-1) Select the TOP {top_n} intents most relevant to the campaign brief.
+1) Select the TOP {int(top_n)} intents most relevant to the campaign brief.
 2) For each selected intent, provide:
    - intent_id
    - intent_name
@@ -1002,28 +1138,31 @@ Task for EACH campaign:
    - weight (positive number; does NOT need to sum to 1 yet)
 3) Output language for rationales: {output_language}
 
+Rules:
+- Return JSON ONLY. No markdown. No extra text.
+- Do NOT use double quotes inside rationale strings. Use parentheses or single quotes if needed.
+
 Return STRICT minified JSON only:
-{{
-  "campaign_profiles":[
-    {{
-      "campaign_id":"...",
-      "campaign_name":"...",
-      "top_intents":[
-        {{
-          "intent_id":"IN_...",
-          "intent_name":"...",
-          "weight":0.0,
-          "rationale":"..."
-        }}
-      ]
-    }}
-  ]
-}}
+{{"campaign_profiles":[{{"campaign_id":"...","campaign_name":"...","top_intents":[{{"intent_id":"IN_...","intent_name":"...","weight":0.0,"rationale":"..."}}]}}]}}
 """.strip()
 
-                            raw = call_llm_with_retry(prompt)
-                            data = extract_json_from_text(raw)
-                            campaign_profiles = data.get("campaign_profiles", [])
+                            raw = call_llm_with_retry(
+                                model=model,
+                                prompt=prompt,
+                                rpm_limit=int(rpm_limit),
+                                max_retries=int(max_retries),
+                                last_ts_key="_last_llm_call_ts_step3"
+                            )
+
+                            try:
+                                data = extract_json_from_text_robust(raw)
+                            except json.JSONDecodeError as e:
+                                st.error("❌ Invalid JSON returned by the model (Step 3).")
+                                st.code(debug_json_error(raw, e))
+                                st.code((raw or "")[:1200])
+                                st.stop()
+
+                            campaign_profiles = data.get("campaign_profiles", []) or []
 
                             for cp in campaign_profiles:
                                 cid = str(cp.get("campaign_id", "")).strip()
@@ -1098,145 +1237,154 @@ if st.session_state.get("campaign_intent_profiles_json") is not None:
 # The campaign intent profile exists only as an optional marketing artifact / audit input for later modules.
 # Product labeling runs directly against the ontology intent list.
 
-
 # ============================================================================
-# STEP 4: PRODUCT → INTENT LABELING (MERGED SINGLE STEP)
-# Now supports:
-#   A) Upload product→intent labels CSV (skip LLM)
-#   B) Run LLM labeling (rate-limit safe)
-# Stores outputs in st.session_state (read-only demo: no DWH writes)
+# STEP 4: PRODUCT → INTENT LABELING (UPLOAD OR LLM)
 # ============================================================================
-
 st.divider()
-st.header("Step 4: Product → Intent Labeling (Merged)")
-st.caption("Either upload existing product→intent labels CSV, or run LLM labeling. Outputs stored in session_state only.")
+st.header("Step 4: Product → Intent Labeling")
+st.caption("Mode A: Upload existing labels • Mode B: Run Gemini labeling (JSON-robust)")
 
-# Preconditions
 if "catalog_df" not in st.session_state:
-    st.info("👆 Upload Product CSV in Step 1 to enable Step 4.")
+    st.info("👆 Upload Product CSV in Step 1 first.")
     st.stop()
 
 catalog_df = st.session_state["catalog_df"].copy()
 
-# Initialize session outputs if absent
 if "product_intent_labels_df" not in st.session_state:
     st.session_state["product_intent_labels_df"] = None
 if "product_intent_labels_json" not in st.session_state:
     st.session_state["product_intent_labels_json"] = None
 
-mode = st.radio(
-    "Choose Step 4 mode",
-    ["Upload product→intent labels CSV", "Run LLM labeling"],
-    horizontal=True,
-    key="step4_mode"
-)
+mode = st.radio("Choose labeling mode", ["Upload labeled CSV (Mode A)", "Run Gemini labeling (Mode B)"], horizontal=True, key="step4_mode")
 
-# ----------------------------------------------------------------------------
-# MODE A: UPLOAD CSV
-# ----------------------------------------------------------------------------
-if mode == "Upload product→intent labels CSV":
-    st.subheader("📤 Upload product_intent_labels.csv")
+# -------------------------
+# MODE A: Upload labels CSV
+# -------------------------
+if mode == "Upload labeled CSV (Mode A)":
+    st.subheader("📤 Upload product intent labels CSV")
+
     st.caption(
-        "Required columns: product_id, intent_id, and score (or weight). "
-        "Recommended: product_name, intent_name, rank."
+        "Accepted formats:\n"
+        "- Long format: product_id, intent_id, score (optional: intent_name, evidence, reason)\n"
+        "- Wide JSON-like not supported here — upload CSV only."
     )
 
-    uploaded_labels = st.file_uploader("Upload product_intent_labels CSV", type=["csv"], key="step4_upload_labels")
+    up = st.file_uploader("Upload product_intent_labels.csv", type=["csv"], key="step4_upload_labels")
+    load_btn = st.button("Load Uploaded Labels", type="primary", key="step4_load_uploaded_labels")
 
-    if uploaded_labels is not None:
-        try:
-            labels_df = pd.read_csv(uploaded_labels)
-            labels_df.columns = labels_df.columns.str.strip().str.lower()
+    if load_btn:
+        if up is None:
+            st.error("Please upload a CSV first.")
+        else:
+            try:
+                df = pd.read_csv(up)
+                df.columns = df.columns.str.strip().str.lower()
 
-            required_base = {"product_id", "intent_id"}
-            missing_base = required_base - set(labels_df.columns)
-            if missing_base:
-                st.error(f"❌ Missing required columns: {sorted(list(missing_base))}")
-                st.info(f"Found columns: {labels_df.columns.tolist()}")
-                st.stop()
+                # minimal required
+                required = {"product_id", "intent_id"}
+                missing = required - set(df.columns)
+                if missing:
+                    st.error(f"❌ Missing columns: {sorted(list(missing))}. Required at least: product_id, intent_id")
+                    st.info(f"Found columns: {df.columns.tolist()}")
+                    st.stop()
 
-            # score/weight handling
-            if "score" not in labels_df.columns and "weight" not in labels_df.columns:
-                st.error("❌ CSV must contain either 'score' or 'weight' column.")
-                st.info("Tip: If your file uses 'weight', we will map it to 'score'.")
-                st.stop()
+                # Normalize columns
+                if "score" not in df.columns:
+                    df["score"] = 1.0
+                df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0.0).clip(0, 1)
 
-            if "score" not in labels_df.columns and "weight" in labels_df.columns:
-                labels_df["score"] = pd.to_numeric(labels_df["weight"], errors="coerce").fillna(0.0)
-
-            labels_df["score"] = pd.to_numeric(labels_df["score"], errors="coerce").fillna(0.0)
-
-            # Optional columns
-            if "product_name" not in labels_df.columns:
-                # try to enrich from catalog_df
-                if "product_name" in catalog_df.columns:
-                    labels_df = labels_df.merge(
+                # Attach product_name if missing
+                if "product_name" not in df.columns:
+                    df = df.merge(
                         catalog_df[["product_id", "product_name"]],
                         on="product_id",
                         how="left"
                     )
-                else:
-                    labels_df["product_name"] = ""
+                    df["product_name"] = df["product_name"].fillna("")
 
-            if "intent_name" not in labels_df.columns:
-                labels_df["intent_name"] = ""
+                # Attach intent_name if missing and ontology exists
+                if "intent_name" not in df.columns and "dim_intent_df" in st.session_state:
+                    dim_intent_df = st.session_state["dim_intent_df"].copy()
+                    dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
+                    if "intent_id" in dim_intent_df.columns and "intent_name" in dim_intent_df.columns:
+                        df = df.merge(
+                            dim_intent_df[["intent_id", "intent_name"]],
+                            on="intent_id",
+                            how="left"
+                        )
+                        df["intent_name"] = df["intent_name"].fillna("")
 
-            if "rank" not in labels_df.columns:
-                # derive rank per product by descending score
-                labels_df = labels_df.sort_values(["product_id", "score"], ascending=[True, False])
-                labels_df["rank"] = labels_df.groupby("product_id").cumcount() + 1
+                if "evidence" not in df.columns:
+                    df["evidence"] = ""
+                if "reason" not in df.columns:
+                    df["reason"] = ""
 
-            # Normalize types
-            labels_df["product_id"] = labels_df["product_id"].astype(str)
-            labels_df["intent_id"] = labels_df["intent_id"].astype(str)
-            labels_df["rank"] = pd.to_numeric(labels_df["rank"], errors="coerce").fillna(0).astype(int)
+                # Create rank per product by score desc
+                df = df.copy()
+                df["product_id"] = df["product_id"].astype(str)
+                df["intent_id"] = df["intent_id"].astype(str)
+                df = df.sort_values(["product_id", "score"], ascending=[True, False])
+                df["rank"] = df.groupby("product_id").cumcount() + 1
 
-            # Build JSON view (grouped)
-            labels_json = []
-            for pid, g in labels_df.sort_values(["product_id", "rank"]).groupby("product_id"):
-                pname = str(g["product_name"].iloc[0]) if "product_name" in g.columns else ""
-                top_intents = []
-                for _, row in g.iterrows():
-                    top_intents.append({
-                        "intent_id": str(row.get("intent_id", "")),
-                        "intent_name": str(row.get("intent_name", "")),
-                        "score": float(row.get("score", 0.0)),
-                        "evidence": str(row.get("evidence", "")) if "evidence" in labels_df.columns else "",
-                        "reason": str(row.get("reason", "")) if "reason" in labels_df.columns else ""
+                # Add metadata columns
+                ontology_version = "v1"
+                if "ontology" in st.session_state:
+                    ontology_version = str(st.session_state["ontology"].get("version", "v1"))
+                df["ontology_version"] = df.get("ontology_version", ontology_version)
+                df["labeling_run_id"] = df.get("labeling_run_id", f"upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
+                df["model"] = df.get("model", "uploaded")
+                df["created_at"] = df.get("created_at", pd.Timestamp.now().isoformat())
+
+                # Build JSON structure per product
+                labels_json = []
+                for pid, g in df.sort_values(["product_id", "rank"]).groupby("product_id"):
+                    pname = ""
+                    if "product_name" in g.columns and g["product_name"].notna().any():
+                        pname = str(g["product_name"].dropna().iloc[0])
+                    top_intents = []
+                    for _, r in g.iterrows():
+                        top_intents.append({
+                            "intent_id": str(r.get("intent_id", "")),
+                            "intent_name": str(r.get("intent_name", "")),
+                            "score": float(r.get("score", 0.0)),
+                            "evidence": str(r.get("evidence", "")),
+                            "reason": str(r.get("reason", "")),
+                        })
+
+                    labels_json.append({
+                        "product_id": str(pid),
+                        "product_name": pname,
+                        "top_intents": top_intents,
+                        "ontology_version": str(g.get("ontology_version", ontology_version).iloc[0]) if "ontology_version" in g.columns else ontology_version,
+                        "labeling_run_id": str(g.get("labeling_run_id", "").iloc[0]) if "labeling_run_id" in g.columns else "",
+                        "model": str(g.get("model", "").iloc[0]) if "model" in g.columns else "uploaded",
+                        "created_at": str(g.get("created_at", "").iloc[0]) if "created_at" in g.columns else pd.Timestamp.now().isoformat(),
                     })
-                labels_json.append({
-                    "product_id": str(pid),
-                    "product_name": pname,
-                    "top_intents": top_intents,
-                    "source": "uploaded_csv"
-                })
 
-            # Store
-            st.session_state["product_intent_labels_df"] = labels_df
-            st.session_state["product_intent_labels_json"] = labels_json
+                st.session_state["product_intent_labels_df"] = df
+                st.session_state["product_intent_labels_json"] = labels_json
 
-            st.success(f"✅ Loaded product→intent labels from CSV: {len(labels_df):,} rows, {labels_df['product_id'].nunique():,} products")
+                st.success(f"✅ Loaded uploaded labels: {len(df):,} rows, {df['product_id'].nunique():,} products")
+                with st.expander("Preview labels (first 200 rows)", expanded=False):
+                    st.dataframe(df.head(200), use_container_width=True)
 
-            with st.expander("Preview uploaded labels"):
-                st.dataframe(labels_df.head(50), use_container_width=True)
+            except Exception as e:
+                st.error(f"❌ Failed to load uploaded labels: {e}")
+                st.exception(e)
 
-        except Exception as e:
-            st.error(f"❌ Error reading labels CSV: {e}")
-
-# ----------------------------------------------------------------------------
-# MODE B: RUN LLM LABELING (updated - robust JSON extraction + better debugging)
-# ----------------------------------------------------------------------------
+# -------------------------
+# MODE B: Run Gemini labeling
+# -------------------------
 else:
     # Preconditions for LLM mode
     if "dim_intent_df" not in st.session_state or "ontology" not in st.session_state:
-        st.info("👆 Generate the ontology in Step 2 first (needed for LLM labeling).")
+        st.info("👆 Generate or upload the ontology in Step 2 first (needed for LLM labeling).")
         st.stop()
 
     dim_intent_df = st.session_state["dim_intent_df"].copy()
     ontology = st.session_state["ontology"]
     ontology_version = str(ontology.get("version", "v1"))
 
-    # API key (reuse secrets or input)
     st.subheader("🔑 API Configuration")
     gemini_api_key = None
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
@@ -1256,9 +1404,7 @@ else:
 
     st.divider()
 
-    # Controls
     c1, c2 = st.columns([2, 1])
-
     with c1:
         st.subheader("Labeling settings")
         top_k_intents = st.number_input("Top-K intents per product", min_value=1, max_value=10, value=3, key="step4_topk")
@@ -1274,7 +1420,7 @@ else:
 
     label_btn = st.button("🏷️ Run Product → Intent Labeling", type="primary", use_container_width=True, key="step4_run_btn")
 
-    # Prepare concise intent list to reduce prompt size
+    # Prepare concise intent list
     intent_candidates = []
     for _, r in dim_intent_df.iterrows():
         intent_candidates.append({
@@ -1282,128 +1428,11 @@ else:
             "intent_name": str(r.get("intent_name", "")).strip(),
             "definition": str(r.get("definition", "")).strip(),
         })
+    intent_snippet = safe_json_snippet(intent_candidates, max_chars=16000)
 
-    def _safe_json_snippet(obj, max_chars=16000):
-        txt = json.dumps(obj, ensure_ascii=False)
-        return txt[:max_chars]
-
-    intent_snippet = _safe_json_snippet(intent_candidates)
-
-    # ------------------------------------------------------------------------
-    # Robust JSON extraction + debugging helpers
-    # ------------------------------------------------------------------------
-    import re
-
-    def trim_to_balanced_json(s: str) -> str:
-        """
-        Trim a string to the first complete JSON object/array (balanced braces/brackets),
-        while respecting quoted strings and escapes.
-        """
-        stack = []
-        in_str = False
-        esc = False
-
-        for i, ch in enumerate(s):
-            if in_str:
-                if esc:
-                    esc = False
-                elif ch == "\\":
-                    esc = True
-                elif ch == '"':
-                    in_str = False
-                continue
-
-            if ch == '"':
-                in_str = True
-                continue
-
-            if ch in "{[":
-                stack.append("}" if ch == "{" else "]")
-            elif ch in "}]":
-                if not stack:
-                    return s[:i+1]
-                expected = stack[-1]
-                if ch != expected:
-                    # mismatched close, cut here and let json.loads raise if needed
-                    return s[:i+1]
-                stack.pop()
-                if not stack:
-                    return s[:i+1]
-
-        return s
-
-    def extract_json_from_text(raw: str):
-        """
-        Handles:
-        - ```json fences
-        - leading commentary before JSON
-        - trailing commentary after JSON
-        - trims to first complete JSON object/array
-        """
-        text = (raw or "").strip()
-
-        # strip code fences
-        text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```\s*$", "", text)
-
-        # find first { or [
-        starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
-        if not starts:
-            raise json.JSONDecodeError("No JSON object/array found in model output", text, 0)
-
-        text = text[min(starts):].strip()
-
-        # trim trailing junk by balancing
-        text = trim_to_balanced_json(text).strip()
-
-        return json.loads(text)
-
-    def debug_json_error(raw: str, e: json.JSONDecodeError, context: int = 160) -> str:
-        s = raw or ""
-        i = getattr(e, "pos", 0)
-        start = max(0, i - context)
-        end = min(len(s), i + context)
-        snippet = s[start:end]
-        caret_pos = max(0, i - start)
-
-        # try to compute line/col in the shown snippet (best-effort)
-        return (
-            f"{str(e)}\n"
-            f"--- context around char {i} ---\n"
-            f"{snippet}\n"
-            f"{' ' * caret_pos}^\n"
-        )
-
-    def parse_retry_delay_seconds(err_text: str) -> int:
-        m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
-        return int(m.group(1)) if m else 0
-
-    def chunk_df(df, size: int):
-        for start in range(0, len(df), size):
-            yield df.iloc[start:start+size]
-
-    def clamp01(x):
-        try:
-            v = float(x)
-        except:
-            return 0.0
-        if v < 0:
-            return 0.0
-        if v > 1:
-            return 1.0
-        return v
-
-    # Run labeling
     if label_btn:
         try:
-            import time
-            import random
-            import google.generativeai as genai
-
-            genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel(model_name)
-
-            min_interval = 60.0 / float(rpm_limit)
+            model = make_gemini_model(gemini_api_key, model_name, json_mode=True, temperature=0.2)
 
             existing_rows = []
             existing_json = []
@@ -1413,36 +1442,7 @@ else:
                 existing_json = list(st.session_state["product_intent_labels_json"])
 
             already_done = set([x.get("product_id") for x in existing_json if x.get("product_id")])
-
             todo_df = catalog_df[~catalog_df["product_id"].astype(str).isin(already_done)].reset_index(drop=True)
-
-            def call_llm_with_retry(prompt: str):
-                last_call = st.session_state.get("_last_llm_call_ts_step4", 0.0)
-                now = time.time()
-                wait = (last_call + min_interval) - now
-                if wait > 0:
-                    time.sleep(wait)
-
-                for attempt in range(int(max_retries) + 1):
-                    try:
-                        resp = model.generate_content(prompt)
-                        st.session_state["_last_llm_call_ts_step4"] = time.time()
-                        return resp.text
-                    except Exception as e:
-                        msg = str(e)
-                        if "429" in msg or "ResourceExhausted" in msg or "quota" in msg.lower():
-                            retry_s = parse_retry_delay_seconds(msg)
-                            if retry_s <= 0:
-                                retry_s = int(min(60, (2 ** attempt) * 5))
-                            retry_s = retry_s + random.randint(1, 3)
-                            st.warning(
-                                f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... "
-                                f"(attempt {attempt+1}/{int(max_retries)+1})"
-                            )
-                            time.sleep(retry_s)
-                            continue
-                        raise
-                raise RuntimeError("Exceeded retry attempts due to rate limiting.")
 
             created_at = pd.Timestamp.now().isoformat()
             labeling_run_id = f"run_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
@@ -1462,7 +1462,6 @@ else:
                         for _, r in batch.iterrows():
                             pid = str(r["product_id"])
                             pname = str(r.get("product_name", "") or r.get("product_title", ""))
-                            # defensive: ensure text is a string and safely truncated
                             ptext = str(r.get("product_text", "") or "")[:int(product_text_chars)]
                             batch_products.append({
                                 "product_id": pid,
@@ -1485,21 +1484,28 @@ Task for EACH product:
    - intent_id
    - intent_name
    - score (0.0 to 1.0, higher = more relevant)
-   - evidence (a short phrase copied or paraphrased from the product text)
+   - evidence (short phrase copied or paraphrased from product text)
    - reason (1 short sentence)
-3) Return JSON ONLY. No markdown. No extra text. Double quotes only. No trailing commas.
+3) Return JSON ONLY. No markdown. No extra text. No trailing commas.
+   IMPORTANT: Do NOT put double quotes (") inside evidence/reason strings.
+              Use parentheses or single quotes instead.
 
-Return STRICT minified JSON matching this schema:
+Return STRICT minified JSON:
 {{"labels":[{{"product_id":"...","product_name":"...","top_intents":[{{"intent_id":"IN_...","intent_name":"...","score":0.0,"evidence":"...","reason":"..."}}]}}]}}
 """.strip()
 
-                        raw = call_llm_with_retry(prompt)
+                        raw = call_llm_with_retry(
+                            model=model,
+                            prompt=prompt,
+                            rpm_limit=int(rpm_limit),
+                            max_retries=int(max_retries),
+                            last_ts_key="_last_llm_call_ts_step4"
+                        )
 
-                        # Parse with robust extractor and give actionable debug on failure
                         try:
-                            data = extract_json_from_text(raw)
+                            data = extract_json_from_text_robust(raw)
                         except json.JSONDecodeError as e:
-                            st.error("❌ Invalid JSON returned by the model.")
+                            st.error("❌ Invalid JSON returned by the model (Step 4).")
                             st.code(debug_json_error(raw, e))
                             st.write("Raw model output (first 1200 chars):")
                             st.code((raw or "")[:1200])
@@ -1558,7 +1564,7 @@ Return STRICT minified JSON matching this schema:
                                     "created_at": created_at
                                 })
 
-                        # update session each batch so progress survives crashes
+                        # persist per batch
                         st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
                         st.session_state["product_intent_labels_json"] = labels_json
 
@@ -1575,29 +1581,26 @@ Return STRICT minified JSON matching this schema:
             st.error(f"❌ Error labeling products: {str(e)}")
             st.exception(e)
 
-
-# ----------------------------------------------------------------------------
-# DISPLAY OUTPUTS (both modes)
-# ----------------------------------------------------------------------------
+# -------------------------
+# Step 4 Outputs
+# -------------------------
 if st.session_state.get("product_intent_labels_df") is not None:
-    st.subheader("🏷️ Product Intent Labels (Preview)")
-    df = st.session_state["product_intent_labels_df"]
-    st.dataframe(df.head(500), use_container_width=True, height=420)
-    st.caption(f"Showing up to 500 rows. Total rows: {len(df):,}")
+    st.subheader("🏷️ Product → Intent Labels (Preview)")
+    labels_df = st.session_state["product_intent_labels_df"].copy()
+    st.dataframe(labels_df, use_container_width=True, height=420)
 
     st.download_button(
         "📥 Download product_intent_labels.csv",
-        data=df.to_csv(index=False).encode("utf-8"),
+        data=labels_df.to_csv(index=False).encode("utf-8"),
         file_name="product_intent_labels.csv",
         mime="text/csv",
         use_container_width=True
     )
 
 if st.session_state.get("product_intent_labels_json") is not None:
-    st.subheader("📦 Product Intent Labels (JSON)")
-    st.json(st.session_state["product_intent_labels_json"][:50])
-    st.caption("Showing first 50 products in JSON preview.")
-
+    st.subheader("📦 Product → Intent Labels (JSON)")
+    st.json(st.session_state["product_intent_labels_json"][:25])
+    st.caption("Showing first 25 products in JSON preview.")
     st.download_button(
         "📥 Download product_intent_labels.json",
         data=json.dumps(st.session_state["product_intent_labels_json"], ensure_ascii=False, indent=2),
@@ -1607,558 +1610,445 @@ if st.session_state.get("product_intent_labels_json") is not None:
     )
 
 # ============================================================================
-# STEP 5: CUSTOMER INTENT PROFILE BUILDER (from transactions + product-intent labels)
-# - Accepts product_intent_labels via:
-#   (A) session_state from Step 4 LLM labeling, OR
-#   (B) CSV upload (product_id, intent_id, intent_name, score)
-# - Produces:
-#   - customer_intent_profile_df (long format)
-#   - optional customer_lifestyle_profile_df if ontology tables exist
-# - Stores in st.session_state (read-only demo: no DWH writes)
+# STEP 5: CUSTOMER INTENT / LIFESTYLE PROFILE BUILDER
 # ============================================================================
-
 st.divider()
-st.header("Step 5: Customer Intent Profile Builder")
-st.caption("Aggregate transactions into customer-level intent weights using Product → Intent labels (CSV upload or Step 4 outputs).")
+st.header("Step 5: Customer Lifestyle Profile Builder")
+st.caption("Build customer_intent_profile and customer_lifestyle_profile from transactions + product intent labels.")
 
-# Preconditions
 if "txn_df" not in st.session_state:
-    st.info("👆 Upload Transaction CSV in Step 1 to enable Step 5.")
+    st.info("👆 Upload Transaction CSV in Step 1 first.")
     st.stop()
 
 txn_df = st.session_state["txn_df"].copy()
 
-# --------------------------------------------------------------------
-# 5.0 Choose Product→Intent Labels Source
-# --------------------------------------------------------------------
-st.subheader("5.0 Product → Intent Labels Source")
-
-labels_source = st.radio(
-    "Choose labels source",
-    ["Use Step 4 output (session)", "Upload product_intent_labels.csv"],
-    horizontal=True,
-    key="step5_labels_source"
-)
-
-labels_df = None
-
-if labels_source == "Use Step 4 output (session)":
-    if "product_intent_labels_df" in st.session_state and st.session_state["product_intent_labels_df"] is not None:
-        labels_df = st.session_state["product_intent_labels_df"].copy()
-        st.success(f"✅ Loaded labels from session_state: {len(labels_df):,} rows")
-        with st.expander("Preview labels (session)"):
-            st.dataframe(labels_df.head(20), use_container_width=True)
-    else:
-        st.warning("⚠️ No Step 4 labels found in session_state. Please run Step 4 or upload a CSV.")
-else:
-    uploaded_labels = st.file_uploader(
-        "Upload product_intent_labels.csv",
-        type=["csv"],
-        key="step5_labels_csv"
-    )
-    if uploaded_labels is not None:
-        try:
-            labels_df = pd.read_csv(uploaded_labels)
-            labels_df.columns = labels_df.columns.str.strip().str.lower()
-            st.success(f"✅ Uploaded labels CSV: {len(labels_df):,} rows")
-            with st.expander("Preview uploaded labels"):
-                st.dataframe(labels_df.head(20), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error reading labels CSV: {e}")
-
-if labels_df is None:
-    st.info("👆 Provide Product → Intent labels (Step 4 output or CSV upload) to continue.")
+if st.session_state.get("product_intent_labels_df") is None:
+    st.info("👆 Complete Step 4 (Product → Intent labeling) first.")
     st.stop()
 
-# --------------------------------------------------------------------
-# 5.1 Validate / normalize schemas
-# --------------------------------------------------------------------
-st.subheader("5.1 Validation & Configuration")
-
-# Normalize txn schema
-txn_df.columns = txn_df.columns.str.strip().str.lower()
-required_txn = {"tx_id", "customer_id", "product_id", "tx_date", "qty", "price"}
-missing_txn = required_txn - set(txn_df.columns)
-if missing_txn:
-    st.error(f"❌ Transactions missing columns: {sorted(list(missing_txn))}")
-    st.stop()
-
-txn_df["customer_id"] = txn_df["customer_id"].astype(str)
-txn_df["product_id"] = txn_df["product_id"].astype(str)
-txn_df["tx_date"] = pd.to_datetime(txn_df["tx_date"], errors="coerce")
-txn_df["qty"] = pd.to_numeric(txn_df["qty"], errors="coerce").fillna(0.0)
-txn_df["price"] = pd.to_numeric(txn_df["price"], errors="coerce").fillna(0.0)
-txn_df["amt"] = txn_df["qty"] * txn_df["price"]
-
-# Normalize labels schema
+labels_df = st.session_state["product_intent_labels_df"].copy()
 labels_df.columns = labels_df.columns.str.strip().str.lower()
 
-# Support two formats:
-# A) "long" from Step 4: product_id, intent_id, intent_name, score, rank, ...
-# B) "wide/json-ish" not supported here (we keep it strict for CSV upload)
-required_labels = {"product_id", "intent_id", "intent_name"}
-missing_labels = required_labels - set(labels_df.columns)
-if missing_labels:
-    st.error(f"❌ Labels missing columns: {sorted(list(missing_labels))}. Required: {sorted(list(required_labels))}")
-    st.info(f"Found columns: {labels_df.columns.tolist()}")
-    st.stop()
+# needs ontology for lifestyle aggregation
+has_ontology = ("dim_intent_df" in st.session_state)
+if has_ontology:
+    dim_intent_df = st.session_state["dim_intent_df"].copy()
+    dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
+else:
+    dim_intent_df = pd.DataFrame()
 
-# Score column optional, default = 1.0
-if "score" not in labels_df.columns:
-    labels_df["score"] = 1.0
+if "customer_intent_profile_df" not in st.session_state:
+    st.session_state["customer_intent_profile_df"] = None
+if "customer_lifestyle_profile_df" not in st.session_state:
+    st.session_state["customer_lifestyle_profile_df"] = None
 
-labels_df["product_id"] = labels_df["product_id"].astype(str)
-labels_df["intent_id"] = labels_df["intent_id"].astype(str)
-labels_df["intent_name"] = labels_df["intent_name"].astype(str)
-labels_df["score"] = pd.to_numeric(labels_df["score"], errors="coerce").fillna(0.0)
-
-# Deduplicate to keep best score for (product_id, intent_id)
-labels_df = (
-    labels_df.sort_values("score", ascending=False)
-    .drop_duplicates(subset=["product_id", "intent_id"])
-    .reset_index(drop=True)
-)
-
-# Controls
-c1, c2, c3 = st.columns(3)
-
+c1, c2, c3 = st.columns([1.2, 1.2, 1.6])
 with c1:
-    weight_method = st.selectbox(
-        "Weighting method for transactions",
-        ["amt (qty*price)", "qty", "count"],
+    intent_weight_mode = st.selectbox(
+        "Transaction contribution mode",
+        ["amt * label_score", "qty * label_score", "label_score only"],
         index=0,
-        key="step5_weight_method"
+        key="step5_weight_mode"
     )
-
 with c2:
-    min_customer_txns = st.number_input(
-        "Min transactions per customer (filter)",
-        min_value=0,
-        max_value=10_000,
-        value=0,
-        key="step5_min_txns"
-    )
-
+    normalize_customer = st.checkbox("Normalize per customer (sum intent share = 1)", value=True, key="step5_norm_customer")
 with c3:
-    min_customer_spend = st.number_input(
-        "Min spend per customer (filter)",
-        min_value=0.0,
-        max_value=1e12,
-        value=0.0,
-        step=10.0,
-        key="step5_min_spend"
-    )
+    topn_keep = st.number_input("Keep top-N intents per customer (after scoring)", min_value=5, max_value=50, value=20, key="step5_topn_keep")
 
-apply_score = st.checkbox("Multiply by intent score (recommended)", value=True, key="step5_apply_score")
-normalize_mode = st.selectbox(
-    "Normalize customer intent weights",
-    ["sum_to_1", "none"],
-    index=0,
-    key="step5_normalize_mode"
-)
+build_profiles_btn = st.button("🧩 Build Customer Profiles", type="primary", use_container_width=True, key="step5_build_btn")
 
-build_btn = st.button("🧩 Build Customer Intent Profiles", type="primary", use_container_width=True)
+def _compute_contrib(tx_row, mode: str):
+    if mode == "amt * label_score":
+        base = float(tx_row.get("amt", 0.0))
+    elif mode == "qty * label_score":
+        base = float(tx_row.get("qty", 0.0))
+    else:
+        base = 1.0
+    return base
 
-# --------------------------------------------------------------------
-# 5.2 Build customer intent profiles
-# --------------------------------------------------------------------
-if build_btn:
+if build_profiles_btn:
     try:
-        # Join transactions to labels
-        t = txn_df[["tx_id", "customer_id", "product_id", "tx_date", "qty", "price", "amt"]].copy()
-        l = labels_df[["product_id", "intent_id", "intent_name", "score"]].copy()
+        # Join txn -> labels on product_id (long labels)
+        t = txn_df.copy()
+        t["product_id"] = t["product_id"].astype(str)
 
-        joined = t.merge(l, on="product_id", how="inner")
-
-        if joined.empty:
-            st.error("❌ No matches between transactions.product_id and labels.product_id. Check your IDs.")
+        l = labels_df.copy()
+        if "product_id" not in l.columns or "intent_id" not in l.columns:
+            st.error("Labels df must contain product_id and intent_id columns.")
             st.stop()
 
-        # Compute base weight
-        if weight_method.startswith("amt"):
-            base = joined["amt"]
-        elif weight_method == "qty":
-            base = joined["qty"]
-        else:
-            base = 1.0
+        l["product_id"] = l["product_id"].astype(str)
+        l["intent_id"] = l["intent_id"].astype(str)
+        if "score" not in l.columns:
+            l["score"] = 1.0
+        l["score"] = pd.to_numeric(l["score"], errors="coerce").fillna(0.0).clip(0, 1)
 
-        joined["base_weight"] = base
+        merged = t.merge(
+            l[["product_id", "intent_id", "intent_name", "score"]],
+            on="product_id",
+            how="left"
+        )
 
-        # Contribution
-        joined["contribution"] = joined["base_weight"] * (joined["score"] if apply_score else 1.0)
+        merged["base"] = merged.apply(lambda r: _compute_contrib(r, intent_weight_mode), axis=1)
+        merged["intent_points"] = merged["base"] * merged["score"]
 
-        # Aggregate per customer + intent
-        agg = (
-            joined.groupby(["customer_id", "intent_id", "intent_name"], as_index=False)
-            .agg(
-                intent_value=("contribution", "sum"),
-                txn_count=("tx_id", "nunique"),
-                last_tx_date=("tx_date", "max")
+        # Aggregate customer-intent points
+        cust_int = (
+            merged.groupby(["customer_id", "intent_id"], as_index=False)["intent_points"]
+            .sum()
+            .rename(columns={"intent_points": "intent_points_raw"})
+        )
+
+        # Attach intent_name
+        if "intent_name" in l.columns:
+            intent_name_map = (
+                l[["intent_id", "intent_name"]]
+                .dropna()
+                .drop_duplicates(subset=["intent_id"])
             )
-        )
+            cust_int = cust_int.merge(intent_name_map, on="intent_id", how="left")
+        else:
+            cust_int["intent_name"] = ""
 
-        # Add customer-level totals for filtering + normalization
-        cust_totals = (
-            joined.groupby("customer_id", as_index=False)
-            .agg(
-                customer_total_value=("contribution", "sum"),
-                customer_txn_count=("tx_id", "nunique"),
-                customer_last_tx_date=("tx_date", "max")
+        # Normalize per customer (share)
+        if normalize_customer:
+            sums = cust_int.groupby("customer_id")["intent_points_raw"].sum().reset_index(name="cust_sum")
+            cust_int = cust_int.merge(sums, on="customer_id", how="left")
+            cust_int["intent_share"] = cust_int.apply(
+                lambda r: float(r["intent_points_raw"]) / float(r["cust_sum"]) if float(r["cust_sum"] or 0) > 0 else 0.0,
+                axis=1
             )
-        )
-
-        agg = agg.merge(cust_totals, on="customer_id", how="left")
-
-        # Filters
-        if min_customer_txns > 0:
-            agg = agg[agg["customer_txn_count"] >= int(min_customer_txns)]
-        if min_customer_spend > 0:
-            agg = agg[agg["customer_total_value"] >= float(min_customer_spend)]
-
-        if agg.empty:
-            st.warning("⚠️ After filters, no customers remain. Reduce min thresholds.")
-            st.stop()
-
-        # Normalize weights
-        if normalize_mode == "sum_to_1":
-            agg["intent_weight"] = agg["intent_value"] / agg["customer_total_value"].replace({0: pd.NA})
-            agg["intent_weight"] = agg["intent_weight"].fillna(0.0)
         else:
-            agg["intent_weight"] = agg["intent_value"]
+            cust_int["intent_share"] = cust_int["intent_points_raw"]
 
-        # Rank intents per customer
-        agg["intent_rank"] = (
-            agg.sort_values(["customer_id", "intent_weight"], ascending=[True, False])
-            .groupby("customer_id")
-            .cumcount() + 1
-        )
+        # Keep top N per customer
+        cust_int = cust_int.sort_values(["customer_id", "intent_share"], ascending=[True, False])
+        cust_int["rank"] = cust_int.groupby("customer_id").cumcount() + 1
+        cust_int_top = cust_int[cust_int["rank"] <= int(topn_keep)].copy()
 
-        customer_intent_profile_df = agg.sort_values(["customer_id", "intent_rank"]).reset_index(drop=True)
+        st.session_state["customer_intent_profile_df"] = cust_int_top
 
-        # Store in session_state
-        st.session_state["customer_intent_profile_df"] = customer_intent_profile_df
+        # Lifestyle aggregation if we have ontology mapping
+        if has_ontology and "intent_id" in dim_intent_df.columns and "lifestyle_id" in dim_intent_df.columns:
+            map_df = dim_intent_df[["intent_id", "lifestyle_id", "lifestyle_name"]].copy() if "lifestyle_name" in dim_intent_df.columns else dim_intent_df[["intent_id", "lifestyle_id"]].copy()
+            map_df["intent_id"] = map_df["intent_id"].astype(str)
 
-        st.success(f"✅ Built customer_intent_profile_df: {len(customer_intent_profile_df):,} rows")
+            cust_ls = cust_int_top.merge(map_df, on="intent_id", how="left")
+            if "lifestyle_name" not in cust_ls.columns:
+                cust_ls["lifestyle_name"] = ""
 
-        # Optional: build lifestyle profile if available
-        customer_lifestyle_profile_df = None
-        if "dim_intent_df" in st.session_state and st.session_state["dim_intent_df"] is not None:
-            dim_intent_df = st.session_state["dim_intent_df"].copy()
-            dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
+            cust_ls_agg = (
+                cust_ls.groupby(["customer_id", "lifestyle_id", "lifestyle_name"], as_index=False)["intent_share"]
+                .sum()
+                .rename(columns={"intent_share": "lifestyle_share"})
+            )
+            cust_ls_agg = cust_ls_agg.sort_values(["customer_id", "lifestyle_share"], ascending=[True, False])
+            cust_ls_agg["rank"] = cust_ls_agg.groupby("customer_id").cumcount() + 1
 
-            if "intent_id" in dim_intent_df.columns and "lifestyle_id" in dim_intent_df.columns:
-                map_df = dim_intent_df[["intent_id", "lifestyle_id"]].drop_duplicates()
-                tmp = customer_intent_profile_df.merge(map_df, on="intent_id", how="left")
-
-                # Aggregate to lifestyle level
-                ls = (
-                    tmp.groupby(["customer_id", "lifestyle_id"], as_index=False)
-                    .agg(
-                        lifestyle_value=("intent_value", "sum"),
-                        lifestyle_weight=("intent_weight", "sum"),
-                        last_tx_date=("last_tx_date", "max"),
-                        txn_count=("txn_count", "sum")
-                    )
-                )
-
-                # Rank lifestyles per customer
-                ls["lifestyle_rank"] = (
-                    ls.sort_values(["customer_id", "lifestyle_weight"], ascending=[True, False])
-                    .groupby("customer_id")
-                    .cumcount() + 1
-                )
-
-                customer_lifestyle_profile_df = ls.sort_values(["customer_id", "lifestyle_rank"]).reset_index(drop=True)
-                st.session_state["customer_lifestyle_profile_df"] = customer_lifestyle_profile_df
-
-                st.success(f"✅ Built customer_lifestyle_profile_df: {len(customer_lifestyle_profile_df):,} rows")
-            else:
-                st.info("ℹ️ dim_intent_df missing lifestyle_id mapping. Skipping customer_lifestyle_profile_df.")
+            st.session_state["customer_lifestyle_profile_df"] = cust_ls_agg
         else:
-            st.info("ℹ️ No dim_intent_df found. Skipping customer_lifestyle_profile_df.")
+            st.session_state["customer_lifestyle_profile_df"] = None
+
+        st.success("✅ Customer profiles built successfully.")
 
     except Exception as e:
-        st.error(f"❌ Error building customer intent profiles: {e}")
+        st.error(f"❌ Failed to build customer profiles: {e}")
         st.exception(e)
 
-# --------------------------------------------------------------------
-# 5.3 Display + download
-# --------------------------------------------------------------------
-if "customer_intent_profile_df" in st.session_state and st.session_state["customer_intent_profile_df"] is not None:
-    st.subheader("🧾 Customer Intent Profile (Preview)")
-    df = st.session_state["customer_intent_profile_df"]
-    st.dataframe(df.head(500), use_container_width=True, height=420)
-    st.caption(f"Showing up to 500 rows. Total rows: {len(df):,}")
-
+# Outputs
+if st.session_state.get("customer_intent_profile_df") is not None:
+    st.subheader("🧠 Customer Intent Profile (Preview)")
+    df_ci = st.session_state["customer_intent_profile_df"]
+    st.dataframe(df_ci, use_container_width=True, height=420)
     st.download_button(
         "📥 Download customer_intent_profile.csv",
-        data=df.to_csv(index=False).encode("utf-8"),
+        data=df_ci.to_csv(index=False).encode("utf-8"),
         file_name="customer_intent_profile.csv",
         mime="text/csv",
         use_container_width=True
     )
 
-if "customer_lifestyle_profile_df" in st.session_state and st.session_state["customer_lifestyle_profile_df"] is not None:
-    st.subheader("🧾 Customer Lifestyle Profile (Preview)")
-    lsdf = st.session_state["customer_lifestyle_profile_df"]
-    st.dataframe(lsdf.head(500), use_container_width=True, height=420)
-    st.caption(f"Showing up to 500 rows. Total rows: {len(lsdf):,}")
-
+if st.session_state.get("customer_lifestyle_profile_df") is not None:
+    st.subheader("🏠 Customer Lifestyle Profile (Preview)")
+    df_cl = st.session_state["customer_lifestyle_profile_df"]
+    st.dataframe(df_cl, use_container_width=True, height=420)
     st.download_button(
         "📥 Download customer_lifestyle_profile.csv",
-        data=lsdf.to_csv(index=False).encode("utf-8"),
+        data=df_cl.to_csv(index=False).encode("utf-8"),
         file_name="customer_lifestyle_profile.csv",
         mime="text/csv",
         use_container_width=True
     )
 
 # ============================================================================
-# STEP 6: CAMPAIGN AUDIENCE BUILDER (Ranking + Explainability)
-# - Inputs:
-#   (A) customer_intent_profile_df (from Step 5)
-#   (B) campaign_intent_profile.csv (upload) OR Step 3 output (session)
-# - Output:
-#   campaign_audience_ranked_df: customer ranked per campaign with score + explanation
-# - Stores in st.session_state (read-only demo: no DWH writes)
+# STEP 6: CAMPAIGN AUDIENCE BUILDER (MATCH CAMPAIGN → CUSTOMERS)
 # ============================================================================
-
 st.divider()
 st.header("Step 6: Campaign Audience Builder")
-st.caption("Rank customers per campaign by matching Campaign Intent Weights × Customer Intent Weights (with explainability).")
+st.caption("Rank customers for a selected campaign using (campaign intent weights) × (customer intent profile).")
 
-# Preconditions: need customer intent profile
-if "customer_intent_profile_df" not in st.session_state or st.session_state["customer_intent_profile_df"] is None:
-    st.info("👆 Build Customer Intent Profiles in Step 5 first.")
+if st.session_state.get("customer_intent_profile_df") is None:
+    st.info("👆 Build customer profiles in Step 5 first.")
     st.stop()
 
-customer_intent_profile_df = st.session_state["customer_intent_profile_df"].copy()
-customer_intent_profile_df.columns = customer_intent_profile_df.columns.str.strip().str.lower()
+df_ci = st.session_state["customer_intent_profile_df"].copy()
+df_ci["customer_id"] = df_ci["customer_id"].astype(str)
+df_ci["intent_id"] = df_ci["intent_id"].astype(str)
+df_ci["intent_share"] = pd.to_numeric(df_ci["intent_share"], errors="coerce").fillna(0.0)
 
-required_cust_cols = {"customer_id", "intent_id", "intent_name", "intent_weight"}
-missing_cust_cols = required_cust_cols - set(customer_intent_profile_df.columns)
-if missing_cust_cols:
-    st.error(f"❌ customer_intent_profile_df missing columns: {sorted(list(missing_cust_cols))}")
-    st.stop()
+campaigns_df = st.session_state["campaigns_df"].copy()
+campaigns_df["campaign_id"] = campaigns_df["campaign_id"].astype(str)
 
-# --------------------------------------------------------------------
-# 6.0 Campaign Intent Profile source (upload or session)
-# --------------------------------------------------------------------
-st.subheader("6.0 Campaign Intent Profile Source")
-
-camp_source = st.radio(
-    "Choose campaign profile source",
-    ["Use Step 3 output (session)", "Upload campaign_intent_profile.csv"],
-    horizontal=True,
-    key="step6_campaign_source"
+# Choose campaign
+campaign_id = st.selectbox(
+    "Select campaign",
+    options=campaigns_df["campaign_id"].tolist(),
+    format_func=lambda cid: f"{cid} — {campaigns_df.loc[campaigns_df['campaign_id'] == cid, 'campaign_name'].iloc[0]}",
+    key="step6_campaign_select"
 )
 
-campaign_intent_profile_df = None
+campaign_row = campaigns_df[campaigns_df["campaign_id"] == campaign_id].iloc[0]
+st.write(f"**Campaign brief:** {campaign_row['campaign_brief']}")
 
-if camp_source == "Use Step 3 output (session)":
-    if "campaign_intent_profile_df" in st.session_state and st.session_state["campaign_intent_profile_df"] is not None:
-        campaign_intent_profile_df = st.session_state["campaign_intent_profile_df"].copy()
-        st.success(f"✅ Loaded campaign intent profiles from session_state: {len(campaign_intent_profile_df):,} rows")
-        with st.expander("Preview campaign intent profiles (session)"):
-            st.dataframe(campaign_intent_profile_df.head(20), use_container_width=True)
+# Decide weight source
+weight_source = st.radio(
+    "Intent weight source",
+    ["Use Step 3 campaign_intent_profile (if available)", "Manual: pick intents + weights"],
+    horizontal=True,
+    key="step6_weight_source"
+)
+
+intent_weights = None
+
+if weight_source.startswith("Use Step 3"):
+    df_cp = st.session_state.get("campaign_intent_profile_df")
+    if df_cp is None:
+        st.warning("No campaign_intent_profile found in Step 3. Switch to Manual mode or upload profile in Step 3.")
     else:
-        st.warning("⚠️ No Step 3 output found in session_state. Please upload a CSV instead.")
-else:
-    uploaded_campaign_profile = st.file_uploader(
-        "Upload campaign_intent_profile.csv",
-        type=["csv"],
-        key="step6_campaign_intent_csv"
-    )
-    if uploaded_campaign_profile is not None:
-        try:
-            campaign_intent_profile_df = pd.read_csv(uploaded_campaign_profile)
-            campaign_intent_profile_df.columns = campaign_intent_profile_df.columns.str.strip().str.lower()
-            st.success(f"✅ Uploaded campaign intent profile CSV: {len(campaign_intent_profile_df):,} rows")
-            with st.expander("Preview uploaded campaign intent profiles"):
-                st.dataframe(campaign_intent_profile_df.head(20), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error reading campaign intent profile CSV: {e}")
+        df_cp = df_cp.copy()
+        df_cp.columns = df_cp.columns.str.strip().str.lower()
+        if "campaign_id" not in df_cp.columns or "intent_id" not in df_cp.columns or "weight" not in df_cp.columns:
+            st.warning("campaign_intent_profile_df missing required columns. Switch to Manual mode.")
+        else:
+            w = df_cp[df_cp["campaign_id"].astype(str) == str(campaign_id)].copy()
+            if len(w) == 0:
+                st.warning("No intents found for this campaign in profile. Switch to Manual mode.")
+            else:
+                w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
+                s = w["weight"].sum()
+                if s <= 0:
+                    w["weight"] = 1.0 / max(len(w), 1)
+                else:
+                    w["weight"] = w["weight"] / s
+                intent_weights = w[["intent_id", "weight"]].copy()
 
-if campaign_intent_profile_df is None:
-    st.info("👆 Provide campaign intent profiles (Step 3 output or CSV upload) to continue.")
-    st.stop()
+                with st.expander("Campaign intent weights (from Step 3)", expanded=False):
+                    show_cols = ["intent_id", "weight"]
+                    if "intent_name" in w.columns:
+                        show_cols = ["intent_id", "intent_name", "weight"]
+                    if "rationale" in w.columns:
+                        show_cols += ["rationale"]
+                    st.dataframe(w[show_cols].sort_values("weight", ascending=False), use_container_width=True)
 
-# Validate campaign schema
-required_camp_cols = {"campaign_id", "campaign_name", "intent_id", "intent_name", "weight"}
-missing_camp_cols = required_camp_cols - set(campaign_intent_profile_df.columns)
-if missing_camp_cols:
-    st.error(f"❌ campaign_intent_profile_df missing columns: {sorted(list(missing_camp_cols))}")
-    st.info("Expected columns: campaign_id, campaign_name, intent_id, intent_name, weight")
-    st.stop()
+if intent_weights is None:
+    # Manual mode
+    if "dim_intent_df" in st.session_state:
+        dim_intent_df = st.session_state["dim_intent_df"].copy()
+        dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
+        intent_options = dim_intent_df[["intent_id", "intent_name"]].drop_duplicates()
+        intent_options["label"] = intent_options["intent_id"].astype(str) + " — " + intent_options["intent_name"].astype(str)
+        label_to_id = dict(zip(intent_options["label"], intent_options["intent_id"]))
+        labels = intent_options["label"].tolist()
+    else:
+        # fallback to what exists in customer profile
+        intent_ids = sorted(df_ci["intent_id"].unique().tolist())
+        labels = intent_ids
+        label_to_id = {x: x for x in intent_ids}
 
-# Normalize types
-campaign_intent_profile_df["campaign_id"] = campaign_intent_profile_df["campaign_id"].astype(str)
-campaign_intent_profile_df["campaign_name"] = campaign_intent_profile_df["campaign_name"].astype(str)
-campaign_intent_profile_df["intent_id"] = campaign_intent_profile_df["intent_id"].astype(str)
-campaign_intent_profile_df["intent_name"] = campaign_intent_profile_df["intent_name"].astype(str)
-campaign_intent_profile_df["weight"] = pd.to_numeric(campaign_intent_profile_df["weight"], errors="coerce").fillna(0.0)
+    selected = st.multiselect("Pick intents for this campaign", options=labels, default=labels[:6], key="step6_manual_intents")
+    if len(selected) == 0:
+        st.warning("Pick at least 1 intent to rank customers.")
+        st.stop()
 
-customer_intent_profile_df["customer_id"] = customer_intent_profile_df["customer_id"].astype(str)
-customer_intent_profile_df["intent_id"] = customer_intent_profile_df["intent_id"].astype(str)
-customer_intent_profile_df["intent_name"] = customer_intent_profile_df["intent_name"].astype(str)
-customer_intent_profile_df["intent_weight"] = pd.to_numeric(customer_intent_profile_df["intent_weight"], errors="coerce").fillna(0.0)
+    st.write("Set weights (they will be normalized to sum = 1):")
+    weights = []
+    cols = st.columns(min(3, len(selected)))
+    for idx, lab in enumerate(selected):
+        with cols[idx % len(cols)]:
+            w = st.number_input(f"Weight: {lab}", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key=f"step6_w_{idx}")
+            weights.append((label_to_id[lab], float(w)))
 
-# Optional customer filters (for marketer usability)
-st.subheader("6.1 Audience Filters (optional)")
+    wdf = pd.DataFrame(weights, columns=["intent_id", "weight"])
+    s = wdf["weight"].sum()
+    if s <= 0:
+        wdf["weight"] = 1.0 / max(len(wdf), 1)
+    else:
+        wdf["weight"] = wdf["weight"] / s
+    intent_weights = wdf.copy()
 
+# Filters (minimal but useful)
+st.subheader("🔎 Optional Filters")
 f1, f2, f3 = st.columns(3)
 
 with f1:
-    min_customer_total = st.number_input(
-        "Min total intent weight/value (if available)",
-        min_value=0.0,
-        value=0.0,
-        step=0.1,
-        key="step6_min_customer_total"
-    )
+    min_txn_amt = st.number_input("Min total spend (amt) in history", min_value=0.0, value=0.0, step=10.0, key="step6_min_spend")
 with f2:
-    top_n_customers = st.number_input(
-        "Top N customers to return per campaign",
-        min_value=50,
-        max_value=200000,
-        value=5000,
-        step=50,
-        key="step6_top_n_customers"
-    )
+    min_txn_count = st.number_input("Min transaction count", min_value=0, value=0, step=1, key="step6_min_txn_count")
 with f3:
-    top_explain = st.number_input(
-        "Top matched intents to show in explanation",
-        min_value=1,
-        max_value=10,
-        value=3,
-        key="step6_top_explain"
-    )
+    recency_days = st.number_input("Recency window (days): last purchase within", min_value=0, value=0, step=10, key="step6_recency_days")
 
-# Detect available customer total column (from Step 5)
-cust_total_col = None
-for c in ["customer_total_value", "customer_total_amt", "customer_total_spend"]:
-    if c in customer_intent_profile_df.columns:
-        cust_total_col = c
-        break
+rank_btn = st.button("🎯 Build Ranked Audience", type="primary", use_container_width=True, key="step6_rank_btn")
 
-# Controls
-run_rank_btn = st.button("🎯 Rank Audience (Campaign × Customers)", type="primary", use_container_width=True)
+if "campaign_audience_ranked_df" not in st.session_state:
+    st.session_state["campaign_audience_ranked_df"] = None
 
-# --------------------------------------------------------------------
-# 6.2 Rank customers per campaign (dot product)
-# --------------------------------------------------------------------
-if run_rank_btn:
+if rank_btn:
     try:
-        # Merge campaign intents with customer intents by intent_id
-        # score contribution = campaign_weight * customer_intent_weight
-        merged = campaign_intent_profile_df.merge(
-            customer_intent_profile_df,
-            on=["intent_id"],
-            suffixes=("_camp", "_cust"),
-            how="inner"
+        # Compute match score: sum_i customer_intent_share(i) * campaign_weight(i)
+        w = intent_weights.copy()
+        w["intent_id"] = w["intent_id"].astype(str)
+        w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
+
+        # join
+        j = df_ci.merge(w, on="intent_id", how="inner")
+        j["match_component"] = j["intent_share"] * j["weight"]
+
+        score = (
+            j.groupby("customer_id", as_index=False)["match_component"]
+            .sum()
+            .rename(columns={"match_component": "match_score"})
         )
 
-        if merged.empty:
-            st.error("❌ No matching intent_id between campaign profiles and customer profiles.")
-            st.stop()
+        # Add a simple explanation: top contributing intents per customer
+        j = j.sort_values(["customer_id", "match_component"], ascending=[True, False])
+        j["comp_rank"] = j.groupby("customer_id").cumcount() + 1
+        top_comp = j[j["comp_rank"] <= 5].copy()
 
-        merged["score_contribution"] = merged["weight"] * merged["intent_weight"]
+        # Make a compact explanation string
+        def _mk_explain(g):
+            parts = []
+            for _, r in g.iterrows():
+                nm = str(r.get("intent_name", "")) if "intent_name" in g.columns else ""
+                if nm:
+                    parts.append(f"{r['intent_id']} ({nm}): {r['match_component']:.3f}")
+                else:
+                    parts.append(f"{r['intent_id']}: {r['match_component']:.3f}")
+            return " | ".join(parts)
 
-        # Build explain rows: keep intent name from campaign if exists, else from customer
-        merged["intent_name_final"] = merged["intent_name_camp"].fillna(merged["intent_name_cust"])
+        explain = top_comp.groupby("customer_id").apply(_mk_explain).reset_index(name="top_contributors")
 
-        # Aggregate total score per campaign + customer
-        scored = (
-            merged.groupby(["campaign_id", "campaign_name", "customer_id"], as_index=False)
-            .agg(
-                match_score=("score_contribution", "sum"),
-                matched_intents=("intent_id", "nunique")
-            )
-        )
+        out = score.merge(explain, on="customer_id", how="left")
 
-        # Optional join customer total for filtering (if present)
-        if cust_total_col is not None:
-            cust_totals = (
-                customer_intent_profile_df.groupby("customer_id", as_index=False)[cust_total_col]
-                .max()
-                .rename(columns={cust_total_col: "customer_total"})
-            )
-            scored = scored.merge(cust_totals, on="customer_id", how="left")
-            scored["customer_total"] = scored["customer_total"].fillna(0.0)
-            if float(min_customer_total) > 0:
-                scored = scored[scored["customer_total"] >= float(min_customer_total)]
+        # Attach spend, count, recency from txn_df
+        tx = txn_df.copy()
+        tx["customer_id"] = tx["customer_id"].astype(str)
+        tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
 
-        if scored.empty:
-            st.warning("⚠️ No customers remain after filtering.")
-            st.stop()
+        agg = tx.groupby("customer_id").agg(
+            total_spend=("amt", "sum"),
+            txn_count=("tx_id", "count"),
+            last_tx_date=("tx_date", "max")
+        ).reset_index()
 
-        # Rank per campaign
-        scored["rank"] = (
-            scored.sort_values(["campaign_id", "match_score"], ascending=[True, False])
-            .groupby("campaign_id")
-            .cumcount() + 1
-        )
+        out = out.merge(agg, on="customer_id", how="left")
 
-        # Keep top N per campaign
-        scored = scored[scored["rank"] <= int(top_n_customers)].copy()
+        # Apply filters
+        if float(min_txn_amt) > 0:
+            out = out[out["total_spend"].fillna(0.0) >= float(min_txn_amt)]
+        if int(min_txn_count) > 0:
+            out = out[out["txn_count"].fillna(0) >= int(min_txn_count)]
+        if int(recency_days) > 0:
+            cutoff = pd.Timestamp.now() - pd.Timedelta(days=int(recency_days))
+            out = out[out["last_tx_date"].fillna(pd.Timestamp("1900-01-01")) >= cutoff]
 
-        # Explainability: top contributing intents per campaign/customer
-        merged = merged.merge(
-            scored[["campaign_id", "customer_id"]],
-            on=["campaign_id", "customer_id"],
-            how="inner"
-        )
+        out = out.sort_values("match_score", ascending=False).reset_index(drop=True)
+        out["rank"] = out.index + 1
+        out["campaign_id"] = str(campaign_id)
+        out["campaign_name"] = str(campaign_row["campaign_name"])
+        out["built_at"] = pd.Timestamp.now().isoformat()
 
-        merged["intent_contrib_rank"] = (
-            merged.sort_values(["campaign_id", "customer_id", "score_contribution"], ascending=[True, True, False])
-            .groupby(["campaign_id", "customer_id"])
-            .cumcount() + 1
-        )
+        st.session_state["campaign_audience_ranked_df"] = out
 
-        explain = merged[merged["intent_contrib_rank"] <= int(top_explain)].copy()
-
-        # Create compact explanation string
-        explain["explain_piece"] = (
-            explain["intent_name_final"].astype(str)
-            + " (camp="
-            + explain["weight"].round(4).astype(str)
-            + " × cust="
-            + explain["intent_weight"].round(4).astype(str)
-            + " = "
-            + explain["score_contribution"].round(6).astype(str)
-            + ")"
-        )
-
-        explain_agg = (
-            explain.groupby(["campaign_id", "customer_id"], as_index=False)
-            .agg(explanation=("explain_piece", lambda s: " | ".join(list(s))))
-        )
-
-        campaign_audience_ranked_df = scored.merge(
-            explain_agg, on=["campaign_id", "customer_id"], how="left"
-        ).sort_values(["campaign_id", "rank"]).reset_index(drop=True)
-
-        # Store
-        st.session_state["campaign_audience_ranked_df"] = campaign_audience_ranked_df
-
-        st.success(f"✅ Built campaign_audience_ranked_df: {len(campaign_audience_ranked_df):,} rows")
+        st.success(f"✅ Ranked audience built: {len(out):,} customers")
 
     except Exception as e:
-        st.error(f"❌ Error ranking audience: {e}")
+        st.error(f"❌ Failed to build ranked audience: {e}")
         st.exception(e)
 
-# --------------------------------------------------------------------
-# 6.3 Display + download
-# --------------------------------------------------------------------
-if "campaign_audience_ranked_df" in st.session_state and st.session_state["campaign_audience_ranked_df"] is not None:
+if st.session_state.get("campaign_audience_ranked_df") is not None:
     st.subheader("🏆 Ranked Audience (Preview)")
-    out = st.session_state["campaign_audience_ranked_df"]
-    st.dataframe(out.head(500), use_container_width=True, height=440)
-    st.caption(f"Showing up to 500 rows. Total rows: {len(out):,}")
+    aud = st.session_state["campaign_audience_ranked_df"]
+    st.dataframe(aud.head(500), use_container_width=True, height=420)
 
     st.download_button(
         "📥 Download campaign_audience_ranked.csv",
-        data=out.to_csv(index=False).encode("utf-8"),
-        file_name="campaign_audience_ranked.csv",
+        data=aud.to_csv(index=False).encode("utf-8"),
+        file_name=f"campaign_audience_ranked_{campaign_id}.csv",
         mime="text/csv",
         use_container_width=True
     )
+
+# ============================================================================
+# STEP 7: EXPLORER DASHBOARD (LIGHTWEIGHT)
+# ============================================================================
+st.divider()
+st.header("Step 7: Explorer Dashboard")
+st.caption("Quick drill-down for a customer: see top intents, top lifestyles (if available), and recent purchases.")
+
+if "txn_df" not in st.session_state or st.session_state.get("customer_intent_profile_df") is None:
+    st.info("Build profiles first (Step 5).")
+else:
+    tx = st.session_state["txn_df"].copy()
+    tx["customer_id"] = tx["customer_id"].astype(str)
+    tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
+
+    customers = sorted(tx["customer_id"].dropna().unique().tolist())
+    if len(customers) == 0:
+        st.info("No customers found in transactions.")
+    else:
+        pick = st.selectbox("Pick a customer_id to inspect", customers, key="step7_customer_pick")
+
+        # Customer overview
+        c_tx = tx[tx["customer_id"] == str(pick)].copy()
+        total_spend = float(c_tx["amt"].sum()) if "amt" in c_tx.columns else 0.0
+        txn_count = int(len(c_tx))
+        last_dt = c_tx["tx_date"].max()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total spend", f"{total_spend:,.2f}")
+        c2.metric("Transactions", f"{txn_count:,}")
+        c3.metric("Last purchase date", str(last_dt.date()) if pd.notna(last_dt) else "-")
+
+        # Top intents
+        st.subheader("Top Intents")
+        ci = st.session_state["customer_intent_profile_df"].copy()
+        ci = ci[ci["customer_id"].astype(str) == str(pick)].sort_values("intent_share", ascending=False)
+
+        st.dataframe(ci.head(30), use_container_width=True)
+
+        # Top lifestyles if available
+        if st.session_state.get("customer_lifestyle_profile_df") is not None:
+            st.subheader("Top Lifestyles")
+            cl = st.session_state["customer_lifestyle_profile_df"].copy()
+            cl = cl[cl["customer_id"].astype(str) == str(pick)].sort_values("lifestyle_share", ascending=False)
+            st.dataframe(cl.head(20), use_container_width=True)
+
+        # Recent purchases
+        st.subheader("Recent Purchases")
+        recent = c_tx.sort_values("tx_date", ascending=False).head(30).copy()
+        if "catalog_df" in st.session_state:
+            cat = st.session_state["catalog_df"][["product_id", "product_name"]].copy()
+            cat["product_id"] = cat["product_id"].astype(str)
+            recent["product_id"] = recent["product_id"].astype(str)
+            recent = recent.merge(cat, on="product_id", how="left")
+
+        show_cols = []
+        for col in ["tx_date", "tx_id", "product_id", "product_name", "qty", "price", "amt"]:
+            if col in recent.columns:
+                show_cols.append(col)
+
+        st.dataframe(recent[show_cols], use_container_width=True)
+
+st.divider()
+st.caption("End of app.")
+
