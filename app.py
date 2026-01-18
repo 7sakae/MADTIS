@@ -1693,5 +1693,201 @@ if st.session_state.get("customer_intent_profile_df") is not None:
     st.download_button(
         "📥 Download customer_intent_profile.csv",
         data=df.to_csv(index=False).encode("utf-8"),
-        file_name="custome_
+        file_name="customer_intent_profile.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+if st.session_state.get("customer_lifestyle_profile_df") is not None:
+    st.subheader("🧾 Customer Lifestyle Profile (Preview)")
+    lsdf = st.session_state["customer_lifestyle_profile_df"]
+    st.dataframe(lsdf.head(500), use_container_width=True, height=420)
+    st.caption(f"Showing up to 500 rows. Total rows: {len(lsdf):,}")
+    st.download_button(
+        "📥 Download customer_lifestyle_profile.csv",
+        data=lsdf.to_csv(index=False).encode("utf-8"),
+        file_name="customer_lifestyle_profile.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+# ============================================================================
+# STEP 6: CAMPAIGN AUDIENCE BUILDER
+# ============================================================================
+step_header("Step 6: Campaign Audience Builder",
+            "Rank customers per campaign by matching Campaign Intent Weights × Customer Intent Weights (with explainability).")
+
+if "customer_intent_profile_df" not in st.session_state or st.session_state["customer_intent_profile_df"] is None:
+    info_box("Build Customer Intent Profiles in Step 5 first.")
+    st.stop()
+
+customer_intent_profile_df = st.session_state["customer_intent_profile_df"].copy()
+customer_intent_profile_df.columns = customer_intent_profile_df.columns.str.strip().str.lower()
+
+required_cust_cols = {"customer_id", "intent_id", "intent_name", "intent_weight"}
+missing_cust_cols = required_cust_cols - set(customer_intent_profile_df.columns)
+if missing_cust_cols:
+    st.error(f"❌ customer_intent_profile_df missing columns: {sorted(list(missing_cust_cols))}")
+    st.stop()
+
+st.subheader("6.0 Campaign Intent Profile Source")
+camp_source = st.radio(
+    "Choose campaign profile source",
+    ["Use Step 3 output (session)", "Upload campaign_intent_profile.csv"],
+    horizontal=True,
+    key="step6_campaign_source"
+)
+
+campaign_intent_profile_df = None
+if camp_source == "Use Step 3 output (session)":
+    if st.session_state.get("campaign_intent_profile_df") is not None:
+        campaign_intent_profile_df = st.session_state["campaign_intent_profile_df"].copy()
+        success_box(f"Loaded campaign intent profiles from session_state: {len(campaign_intent_profile_df):,} rows")
+        with st.expander("Preview campaign intent profiles (session)"):
+            st.dataframe(campaign_intent_profile_df.head(20), use_container_width=True)
+    else:
+        warn_box("No Step 3 output found in session_state. Please upload a CSV instead.")
+else:
+    upload_zone("Upload your **campaign_intent_profile.csv** here for Step 6.")
+    uploaded_campaign_profile = st.file_uploader("Upload campaign_intent_profile.csv", type=["csv"], key="step6_campaign_intent_csv")
+    if uploaded_campaign_profile is not None:
+        try:
+            campaign_intent_profile_df = pd.read_csv(uploaded_campaign_profile)
+            campaign_intent_profile_df.columns = campaign_intent_profile_df.columns.str.strip().str.lower()
+            success_box(f"Uploaded campaign intent profile CSV: {len(campaign_intent_profile_df):,} rows")
+            with st.expander("Preview uploaded campaign intent profiles"):
+                st.dataframe(campaign_intent_profile_df.head(20), use_container_width=True)
+        except Exception as e:
+            st.error(f"Error reading campaign intent profile CSV: {e}")
+
+if campaign_intent_profile_df is None:
+    info_box("Provide campaign intent profiles (Step 3 output or CSV upload) to continue.")
+    st.stop()
+
+required_camp_cols = {"campaign_id", "campaign_name", "intent_id", "intent_name", "weight"}
+missing_camp_cols = required_camp_cols - set(campaign_intent_profile_df.columns)
+if missing_camp_cols:
+    st.error(f"❌ campaign_intent_profile_df missing columns: {sorted(list(missing_camp_cols))}")
+    st.info("Expected columns: campaign_id, campaign_name, intent_id, intent_name, weight")
+    st.stop()
+
+campaign_intent_profile_df["campaign_id"] = campaign_intent_profile_df["campaign_id"].astype(str)
+campaign_intent_profile_df["campaign_name"] = campaign_intent_profile_df["campaign_name"].astype(str)
+campaign_intent_profile_df["intent_id"] = campaign_intent_profile_df["intent_id"].astype(str)
+campaign_intent_profile_df["intent_name"] = campaign_intent_profile_df["intent_name"].astype(str)
+campaign_intent_profile_df["weight"] = pd.to_numeric(campaign_intent_profile_df["weight"], errors="coerce").fillna(0.0)
+
+customer_intent_profile_df["customer_id"] = customer_intent_profile_df["customer_id"].astype(str)
+customer_intent_profile_df["intent_id"] = customer_intent_profile_df["intent_id"].astype(str)
+customer_intent_profile_df["intent_name"] = customer_intent_profile_df["intent_name"].astype(str)
+customer_intent_profile_df["intent_weight"] = pd.to_numeric(customer_intent_profile_df["intent_weight"], errors="coerce").fillna(0.0)
+
+st.subheader("6.1 Audience Filters (optional)")
+f1, f2, f3 = st.columns(3)
+with f1:
+    min_customer_total = st.number_input("Min total intent weight/value (if available)", min_value=0.0, value=0.0, step=0.1, key="step6_min_customer_total")
+with f2:
+    top_n_customers = st.number_input("Top N customers to return per campaign", min_value=50, max_value=200000, value=5000, step=50, key="step6_top_n_customers")
+with f3:
+    top_explain = st.number_input("Top matched intents to show in explanation", min_value=1, max_value=10, value=3, key="step6_top_explain")
+
+cust_total_col = None
+for c in ["customer_total_value", "customer_total_amt", "customer_total_spend"]:
+    if c in customer_intent_profile_df.columns:
+        cust_total_col = c
+        break
+
+run_rank_btn = st.button("🎯 Rank Audience (Campaign × Customers)", type="primary", use_container_width=True)
+
+if run_rank_btn:
+    try:
+        merged = campaign_intent_profile_df.merge(
+            customer_intent_profile_df,
+            on=["intent_id"],
+            suffixes=("_camp", "_cust"),
+            how="inner"
+        )
+
+        if merged.empty:
+            st.error("❌ No matching intent_id between campaign profiles and customer profiles.")
+            st.stop()
+
+        merged["score_contribution"] = merged["weight"] * merged["intent_weight"]
+        merged["intent_name_final"] = merged["intent_name_camp"].fillna(merged["intent_name_cust"])
+
+        scored = (
+            merged.groupby(["campaign_id", "campaign_name", "customer_id"], as_index=False)
+            .agg(match_score=("score_contribution", "sum"), matched_intents=("intent_id", "nunique"))
+        )
+
+        if cust_total_col is not None:
+            cust_totals = (
+                customer_intent_profile_df.groupby("customer_id", as_index=False)[cust_total_col]
+                .max()
+                .rename(columns={cust_total_col: "customer_total"})
+            )
+            scored = scored.merge(cust_totals, on="customer_id", how="left")
+            scored["customer_total"] = scored["customer_total"].fillna(0.0)
+            if float(min_customer_total) > 0:
+                scored = scored[scored["customer_total"] >= float(min_customer_total)]
+
+        if scored.empty:
+            warn_box("No customers remain after filtering.")
+            st.stop()
+
+        scored["rank"] = (
+            scored.sort_values(["campaign_id", "match_score"], ascending=[True, False])
+            .groupby("campaign_id")
+            .cumcount() + 1
+        )
+        scored = scored[scored["rank"] <= int(top_n_customers)].copy()
+
+        merged = merged.merge(scored[["campaign_id", "customer_id"]], on=["campaign_id", "customer_id"], how="inner")
+
+        merged["intent_contrib_rank"] = (
+            merged.sort_values(["campaign_id", "customer_id", "score_contribution"], ascending=[True, True, False])
+            .groupby(["campaign_id", "customer_id"])
+            .cumcount() + 1
+        )
+
+        explain = merged[merged["intent_contrib_rank"] <= int(top_explain)].copy()
+        explain["explain_piece"] = (
+            explain["intent_name_final"].astype(str)
+            + " (camp="
+            + explain["weight"].round(4).astype(str)
+            + " × cust="
+            + explain["intent_weight"].round(4).astype(str)
+            + " = "
+            + explain["score_contribution"].round(6).astype(str)
+            + ")"
+        )
+
+        explain_agg = (
+            explain.groupby(["campaign_id", "customer_id"], as_index=False)
+            .agg(explanation=("explain_piece", lambda s: " | ".join(list(s))))
+        )
+
+        campaign_audience_ranked_df = scored.merge(explain_agg, on=["campaign_id", "customer_id"], how="left") \
+                                           .sort_values(["campaign_id", "rank"]).reset_index(drop=True)
+
+        st.session_state["campaign_audience_ranked_df"] = campaign_audience_ranked_df
+        success_box(f"Built campaign_audience_ranked_df: {len(campaign_audience_ranked_df):,} rows")
+
+    except Exception as e:
+        st.error(f"❌ Error ranking audience: {e}")
+        st.exception(e)
+
+if st.session_state.get("campaign_audience_ranked_df") is not None:
+    st.subheader("🏆 Ranked Audience (Preview)")
+    out = st.session_state["campaign_audience_ranked_df"]
+    st.dataframe(out.head(500), use_container_width=True, height=440)
+    st.caption(f"Showing up to 500 rows. Total rows: {len(out):,}")
+    st.download_button(
+        "📥 Download campaign_audience_ranked.csv",
+        data=out.to_csv(index=False).encode("utf-8"),
+        file_name="campaign_audience_ranked.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
 
