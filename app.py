@@ -1613,6 +1613,9 @@ if st.session_state.get("product_intent_labels_json") is not None:
         mime="application/json",
         use_container_width=True
     )
+st.write("labels intents:", labels_df["intent_id"].nunique())
+st.write("ontology intents:", dim_intent_df["intent_id"].nunique())
+st.write("overlap intents:", labels_df["intent_id"].isin(dim_intent_df["intent_id"]).sum())
 
 # ============================================================================
 # STEP 5: CUSTOMER INTENT / LIFESTYLE PROFILE BUILDER
