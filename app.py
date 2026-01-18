@@ -663,8 +663,8 @@ if "catalog_df" in st.session_state:
 
     with col1:
         st.write("**Ontology Settings**")
-        n_lifestyles = st.number_input("Number of Lifestyle Categories", min_value=3, max_value=15, value=6, key="step2_n_lifestyles")
-        max_intents_per_lifestyle = st.number_input("Max Intents per Lifestyle", min_value=2, max_value=10, value=5, key="step2_max_intents")
+        n_lifestyles = st.number_input("Number of Lifestyle Categories", min_value=3,  value=6, key="step2_n_lifestyles")
+        max_intents_per_lifestyle = st.number_input("Max Intents per Lifestyle", min_value=2,  value=5, key="step2_max_intents")
         chunk_size = st.number_input("Chunk Size (products per API call)", min_value=20, max_value=100, value=40, key="step2_chunk_size")
         language = st.selectbox("Output Language", ["en", "th", "zh", "ja", "es", "fr"], key="step2_lang")
 
