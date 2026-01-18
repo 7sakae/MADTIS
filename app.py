@@ -221,6 +221,50 @@ def clamp01(x):
 def safe_json_snippet(obj, max_chars=16000):
     txt = json.dumps(obj, ensure_ascii=False)
     return txt[:max_chars]
+# =========================
+# Token / Chunk Advisor (NO API)
+# =========================
+def approx_tokens_from_text(text: str, mode: str = "chars", chars_per_token: float = 4.0) -> float:
+    """
+    Cheap token estimate (no API calls).
+    mode:
+      - "chars": tokens ~= len(text) / chars_per_token
+      - "bytes": tokens ~= len(text.encode('utf-8')) / chars_per_token   (better for TH/mixed)
+    """
+    if text is None:
+        text = ""
+    s = str(text)
+    if mode == "bytes":
+        n = len(s.encode("utf-8"))
+    else:
+        n = len(s)
+    return float(n) / max(float(chars_per_token), 0.1)
+
+
+def build_step2_overhead_prompt(language: str) -> str:
+    """
+    This MUST mirror your Step 2 prompt template BUT with NO examples injected.
+    Used only to estimate fixed prompt overhead.
+    """
+    return f"""
+You are proposing a Lifestyle→Intent ontology for retail marketing.
+
+Input: Product catalog examples (titles + descriptions):
+
+Task:
+- Propose Lifestyle parents and Intents under each.
+- Each Intent must include:
+  intent_name (2–5 words), definition (1 sentence),
+  include_examples (2–3), exclude_examples (1–2).
+- Output language: {language}
+
+Rules:
+- Return JSON ONLY. No markdown. No extra text.
+- Do NOT use double quotes inside any string fields. Use parentheses or single quotes if needed.
+
+Return STRICT minified JSON:
+{{"lifestyles":[{{"lifestyle_name":"...","definition":"...","intents":[{{"intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
+""".strip()
 
 
 # ============================================================================
@@ -661,12 +705,86 @@ if "catalog_df" in st.session_state:
 
     col1, col2 = st.columns([2, 1])
 
-    with col1:
-        st.write("**Ontology Settings**")
-        n_lifestyles = st.number_input("Number of Lifestyle Categories", min_value=3,  value=6, key="step2_n_lifestyles")
-        max_intents_per_lifestyle = st.number_input("Max Intents per Lifestyle", min_value=2,  value=5, key="step2_max_intents")
-        chunk_size = st.number_input("Chunk Size (products per API call)", min_value=20, max_value=100, value=40, key="step2_chunk_size")
-        language = st.selectbox("Output Language", ["en", "th", "zh", "ja", "es", "fr"], key="step2_lang")
+        # =========================
+    # Chunk Size Advisor (based on user's catalog length)
+    # =========================
+    with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=True):
+        est_mode = st.radio(
+            "Estimator mode",
+            ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
+            index=1,
+            horizontal=True,
+            key="step2_token_est_mode"
+        )
+        chars_per_token = st.slider(
+            "Chars-per-token factor (lower = more tokens)",
+            min_value=2.0,
+            max_value=6.0,
+            value=4.0,
+            step=0.5,
+            key="step2_chars_per_token"
+        )
+
+        # Use exactly what Step 2 sends: product_text truncated to 240 chars per product line
+        sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, 240)
+
+        mode_key = "bytes" if est_mode.startswith("bytes") else "chars"
+        avg_tokens_per_product = sent_series.apply(
+            lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
+        ).mean()
+
+        overhead_prompt = build_step2_overhead_prompt(language)
+        overhead_tokens = approx_tokens_from_text(overhead_prompt, mode=mode_key, chars_per_token=chars_per_token)
+
+        st.write("**Estimated averages (based on your catalog):**")
+        cA, cB, cC = st.columns(3)
+        cA.metric("Avg tokens / product (examples-only)", f"{avg_tokens_per_product:,.1f}")
+        cB.metric("Fixed prompt overhead tokens / call", f"{overhead_tokens:,.0f}")
+        cC.metric("Current chunk size", f"{int(chunk_size)} products")
+
+        # Token budget guidance (you can rename these labels however you like)
+        budget_label = st.selectbox(
+            "Choose a safe token budget for Step 2 prompt (estimate)",
+            ["Conservative (~6k)", "Balanced (~12k)", "Aggressive (~20k)"],
+            index=1,
+            key="step2_budget_label"
+        )
+        token_budget = 6000 if "6k" in budget_label else (12000 if "12k" in budget_label else 20000)
+
+        # Recommended chunk size under budget:
+        reco = int((token_budget - overhead_tokens) / max(avg_tokens_per_product, 1.0))
+        reco = max(5, min(reco, 100))
+
+        st.success(
+            f"✅ Recommended chunk size (under {token_budget:,} tokens): **{reco}** products per call"
+        )
+        st.caption(
+            "This is an estimate to help users pick chunk size based on their description length. "
+            "Bigger chunk = fewer calls but higher risk of long prompts / worse JSON. "
+            "Smaller chunk = more stable but more calls."
+        )
+
+        # Visualize: estimated tokens per call vs chunk size
+        xs = list(range(5, 101, 5))
+        ys_total = [overhead_tokens + avg_tokens_per_product * x for x in xs]
+        ys_per_prod = [(overhead_tokens + avg_tokens_per_product * x) / x for x in xs]
+
+        df_curve = pd.DataFrame({
+            "chunk_size": xs,
+            "est_tokens_per_call": ys_total,
+            "est_tokens_per_product_all_in": ys_per_prod
+        }).set_index("chunk_size")
+
+        st.write("**Estimated tokens per call vs chunk size**")
+        st.line_chart(df_curve[["est_tokens_per_call"]])
+
+        st.write("**All-in tokens per product (overhead amortized)**")
+        st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
+
+        st.caption(
+            f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
+            "For exact counting you’d need a tokenizer / API counter, but this is great for guidance."
+        )
 
     with col2:
         st.write("**Actions**")
