@@ -716,13 +716,13 @@ if "catalog_df" in st.session_state:
 
         n_lifestyles = st.number_input(
             "Number of Lifestyle Categories",
-            min_value=3, max_value=15, value=6,
+            min_value=3, max_value=150, value=6,
             key="step2_n_lifestyles"
         )
 
         max_intents_per_lifestyle = st.number_input(
             "Max Intents per Lifestyle",
-            min_value=2, max_value=10, value=5,
+            min_value=2, max_value=100, value=5,
             key="step2_max_intents"
         )
 
