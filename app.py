@@ -618,7 +618,11 @@ if "catalog_df" in st.session_state:
 
         col_u1, col_u2, col_u3 = st.columns([1, 1, 2])
         with col_u1:
-            load_uploaded_ontology_btn = st.button("Load Uploaded Ontology", type="primary", key="load_uploaded_ontology_btn")
+            load_uploaded_ontology_btn = st.button(
+                "Load Uploaded Ontology",
+                type="primary",
+                key="load_uploaded_ontology_btn"
+            )
         with col_u2:
             clear_ontology_btn = st.button("Clear Ontology (session)", key="clear_ontology_btn")
         with col_u3:
@@ -677,7 +681,9 @@ if "catalog_df" in st.session_state:
                     st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
                     st.session_state["dim_intent_df"] = dim_intent_df
 
-                    st.success(f"✅ Loaded ontology from upload: {len(dim_lifestyle_df)} lifestyles, {len(dim_intent_df)} intents")
+                    st.success(
+                        f"✅ Loaded ontology from upload: {len(dim_lifestyle_df)} lifestyles, {len(dim_intent_df)} intents"
+                    )
 
                 except Exception as e:
                     st.error(f"❌ Failed to load uploaded ontology: {e}")
@@ -705,39 +711,36 @@ if "catalog_df" in st.session_state:
 
     col1, col2 = st.columns([2, 1])
 
-        # =========================
-    # Chunk Size Advisor (based on user's catalog length)
-    # =========================
     with col1:
-    st.write("**Ontology Settings**")
+        st.write("**Ontology Settings**")
 
-    n_lifestyles = st.number_input(
-        "Number of Lifestyle Categories",
-        min_value=3, max_value=15, value=6,
-        key="step2_n_lifestyles"
-    )
+        n_lifestyles = st.number_input(
+            "Number of Lifestyle Categories",
+            min_value=3, max_value=15, value=6,
+            key="step2_n_lifestyles"
+        )
 
-    max_intents_per_lifestyle = st.number_input(
-        "Max Intents per Lifestyle",
-        min_value=2, max_value=10, value=5,
-        key="step2_max_intents"
-    )
+        max_intents_per_lifestyle = st.number_input(
+            "Max Intents per Lifestyle",
+            min_value=2, max_value=10, value=5,
+            key="step2_max_intents"
+        )
 
-    chunk_size = st.number_input(
-        "Chunk Size (products per API call)",
-        min_value=20, max_value=100, value=40,
-        key="step2_chunk_size"
-    )
+        chunk_size = st.number_input(
+            "Chunk Size (products per API call)",
+            min_value=20, max_value=100, value=40,
+            key="step2_chunk_size"
+        )
 
-    language = st.selectbox(
-        "Output Language",
-        ["en", "th", "zh", "ja", "es", "fr"],
-        key="step2_lang"
-    )
+        language = st.selectbox(
+            "Output Language",
+            ["en", "th", "zh", "ja", "es", "fr"],
+            key="step2_lang"
+        )
 
-    # =========================
-    # Chunk Size Advisor (NO API)
-    # =========================
+        # =========================
+        # Chunk Size Advisor (NO API)
+        # =========================
         with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=True):
             est_mode = st.radio(
                 "Estimator mode",
@@ -746,7 +749,7 @@ if "catalog_df" in st.session_state:
                 horizontal=True,
                 key="step2_token_est_mode"
             )
-    
+
             chars_per_token = st.slider(
                 "Chars-per-token factor (lower = more tokens)",
                 min_value=2.0,
@@ -755,29 +758,28 @@ if "catalog_df" in st.session_state:
                 step=0.5,
                 key="step2_chars_per_token"
             )
-    
-            # Use exactly what Step 2 sends (matches your chunk prompt): product_text truncated to 240 chars
-            sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, 240)
-    
+
             mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
-    
+
+            # Mirrors your actual prompt examples (t[:240])
+            sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, 240)
+
             avg_tokens_per_product = sent_series.apply(
                 lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
             ).mean()
-    
+
             overhead_prompt = build_step2_overhead_prompt(language)
             overhead_tokens = approx_tokens_from_text(
                 overhead_prompt,
                 mode=mode_key,
                 chars_per_token=chars_per_token
             )
-    
-            st.write("**Estimated averages (based on your catalog):**")
+
             cA, cB, cC = st.columns(3)
             cA.metric("Avg tokens / product (examples-only)", f"{avg_tokens_per_product:,.1f}")
             cB.metric("Fixed prompt overhead tokens / call", f"{overhead_tokens:,.0f}")
             cC.metric("Current chunk size", f"{int(chunk_size)} products")
-    
+
             budget_label = st.selectbox(
                 "Choose a safe token budget for Step 2 prompt (estimate)",
                 ["Conservative (~6k)", "Balanced (~12k)", "Aggressive (~20k)"],
@@ -785,59 +787,41 @@ if "catalog_df" in st.session_state:
                 key="step2_budget_label"
             )
             token_budget = 6000 if "6k" in budget_label else (12000 if "12k" in budget_label else 20000)
-    
+
             reco = int((token_budget - overhead_tokens) / max(avg_tokens_per_product, 1.0))
             reco = max(5, min(reco, 100))
-    
+
             st.success(f"✅ Recommended chunk size (under {token_budget:,} tokens): **{reco}** products per call")
-    
+
             xs = list(range(5, 101, 5))
             ys_total = [overhead_tokens + avg_tokens_per_product * x for x in xs]
             ys_per_prod = [(overhead_tokens + avg_tokens_per_product * x) / x for x in xs]
-    
+
             df_curve = pd.DataFrame({
                 "chunk_size": xs,
                 "est_tokens_per_call": ys_total,
                 "est_tokens_per_product_all_in": ys_per_prod
             }).set_index("chunk_size")
-    
+
             st.write("**Estimated tokens per call vs chunk size**")
             st.line_chart(df_curve[["est_tokens_per_call"]])
-    
+
             st.write("**All-in tokens per product (overhead amortized)**")
             st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
-    
+
             st.caption(
                 f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
                 "No API calls are made for this estimate."
             )
 
-
-        # Visualize: estimated tokens per call vs chunk size
-        xs = list(range(5, 101, 5))
-        ys_total = [overhead_tokens + avg_tokens_per_product * x for x in xs]
-        ys_per_prod = [(overhead_tokens + avg_tokens_per_product * x) / x for x in xs]
-
-        df_curve = pd.DataFrame({
-            "chunk_size": xs,
-            "est_tokens_per_call": ys_total,
-            "est_tokens_per_product_all_in": ys_per_prod
-        }).set_index("chunk_size")
-
-        st.write("**Estimated tokens per call vs chunk size**")
-        st.line_chart(df_curve[["est_tokens_per_call"]])
-
-        st.write("**All-in tokens per product (overhead amortized)**")
-        st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
-
-        st.caption(
-            f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
-            "For exact counting you’d need a tokenizer / API counter, but this is great for guidance."
-        )
-
     with col2:
         st.write("**Actions**")
-        generate_btn = st.button("🤖 Generate with AI", type="primary", use_container_width=True, key="step2_generate_btn")
+        generate_btn = st.button(
+            "🤖 Generate with AI",
+            type="primary",
+            use_container_width=True,
+            key="step2_generate_btn"
+        )
         st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
 
     if generate_btn:
@@ -961,7 +945,7 @@ Return STRICT minified JSON:
                         for it in ls.get("intents", []):
                             dim_intent_rows.append({
                                 "intent_id": it.get("intent_id"),
-                                "intent_name": it.get("intent_name"),
+                                "intent_name": it.get("intent_name", ""),
                                 "definition": it.get("definition", ""),
                                 "lifestyle_id": ls.get("lifestyle_id"),
                                 "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
@@ -1021,8 +1005,7 @@ Return STRICT minified JSON:
                 file_name="ontology_v1.json",
                 mime="application/json",
                 use_container_width=True
-    )
-
+            )
 
         with tab2:
             st.dataframe(dim_lifestyle_df, use_container_width=True)
@@ -1046,6 +1029,7 @@ Return STRICT minified JSON:
 
 else:
     st.info("👆 Upload Product CSV in Step 1 to enable ontology generation or reuse.")
+
 
 # ============================================================================
 # STEP 3: CAMPAIGN → WEIGHTED INTENT PROFILE (LLM)  +  (UPLOAD TO REUSE)
