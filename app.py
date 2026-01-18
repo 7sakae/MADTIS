@@ -846,14 +846,16 @@ Return STRICT minified JSON:
         tab1, tab2, tab3 = st.tabs(["📋 Ontology JSON", "🎨 Lifestyle Dimensions", "🎯 Intent Dimensions"])
 
         with tab1:
-            st.json(ontology)
+            with st.expander("Preview ontology JSON (collapsed)", expanded=False):
+                st.json(ontology)
             st.download_button(
                 label="📥 Download ontology_v1.json",
                 data=json.dumps(ontology, ensure_ascii=False, indent=2),
                 file_name="ontology_v1.json",
                 mime="application/json",
                 use_container_width=True
-            )
+    )
+
 
         with tab2:
             st.dataframe(dim_lifestyle_df, use_container_width=True)
