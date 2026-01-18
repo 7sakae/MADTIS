@@ -97,7 +97,7 @@ with st.expander("Step 0 — Campaign Input", expanded=True):
     mode = st.radio("Campaign input mode", ["Paste JSON", "Upload CSV"], horizontal=True)
 
     if mode == "Paste JSON":
-        default_json = [
+        default_json =  [
   {
     "campaign_id": "CAMP_VALENTINES",
     "campaign_name": "Valentine’s Day",
@@ -111,7 +111,7 @@ with st.expander("Step 0 — Campaign Input", expanded=True):
   {
     "campaign_id": "CAMP_FATHERSDAY",
     "campaign_name": "Father’s Day",
-    "campaign_brief": "Highlight practical and masculine-leaning gifting with grooming kits, tech accessories, tools, hobby-related items, and everyday utility bundles that feel useful while still being celebratory."
+    "campaign_brief": "Highlight practical and utility-led gifting with grooming kits, tech accessories, tools, hobby-related items, and everyday bundles that feel useful while still being celebratory."
   },
   {
     "campaign_id": "CAMP_GRAD",
@@ -182,16 +182,6 @@ with st.expander("Step 0 — Campaign Input", expanded=True):
     "campaign_id": "CAMP_MIDAUTUMN",
     "campaign_name": "Mid-Autumn Festival",
     "campaign_brief": "Celebrate family togetherness and seasonal traditions with mooncake gifting, tea and table pairings, premium snack bundles, lantern-themed decor, and hosting essentials for reunion moments."
-  },
-  {
-    "campaign_id": "CAMP_SONGKRAN",
-    "campaign_name": "Songkran / Water Festival",
-    "campaign_brief": "Support Thailand’s summer celebration with travel-friendly essentials, waterproof accessories, skincare and sun protection, festive outfits, and refreshing bundles for fun days out and family visits."
-  },
-  {
-    "campaign_id": "CAMP_LOYKRATHONG",
-    "campaign_name": "Loy Krathong / Festival of Lights",
-    "campaign_brief": "Lean into evening outings and tradition with floral and candle-inspired items, beauty-ready prep, giftable sets, and light decorative touches that match the romantic, reflective festival mood."
   },
   {
     "campaign_id": "CAMP_CHRISTMAS",
