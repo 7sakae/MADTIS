@@ -1224,7 +1224,7 @@ if mode == "Upload product→intent labels CSV":
             st.error(f"❌ Error reading labels CSV: {e}")
 
 # ----------------------------------------------------------------------------
-# MODE B: RUN LLM LABELING (your existing implementation)
+# MODE B: RUN LLM LABELING (updated - robust JSON extraction + better debugging)
 # ----------------------------------------------------------------------------
 else:
     # Preconditions for LLM mode
@@ -1289,19 +1289,92 @@ else:
 
     intent_snippet = _safe_json_snippet(intent_candidates)
 
-    # Helpers
-    def extract_json_from_text(text: str) -> dict:
-        import re
-        text = text.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
-        text = re.sub(r"^```json\s*", "", text)
-        text = re.sub(r"```\s*$", "", text)
-        return json.loads(text.strip())
+    # ------------------------------------------------------------------------
+    # Robust JSON extraction + debugging helpers
+    # ------------------------------------------------------------------------
+    import re
+
+    def trim_to_balanced_json(s: str) -> str:
+        """
+        Trim a string to the first complete JSON object/array (balanced braces/brackets),
+        while respecting quoted strings and escapes.
+        """
+        stack = []
+        in_str = False
+        esc = False
+
+        for i, ch in enumerate(s):
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+
+            if ch == '"':
+                in_str = True
+                continue
+
+            if ch in "{[":
+                stack.append("}" if ch == "{" else "]")
+            elif ch in "}]":
+                if not stack:
+                    return s[:i+1]
+                expected = stack[-1]
+                if ch != expected:
+                    # mismatched close, cut here and let json.loads raise if needed
+                    return s[:i+1]
+                stack.pop()
+                if not stack:
+                    return s[:i+1]
+
+        return s
+
+    def extract_json_from_text(raw: str):
+        """
+        Handles:
+        - ```json fences
+        - leading commentary before JSON
+        - trailing commentary after JSON
+        - trims to first complete JSON object/array
+        """
+        text = (raw or "").strip()
+
+        # strip code fences
+        text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```\s*$", "", text)
+
+        # find first { or [
+        starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
+        if not starts:
+            raise json.JSONDecodeError("No JSON object/array found in model output", text, 0)
+
+        text = text[min(starts):].strip()
+
+        # trim trailing junk by balancing
+        text = trim_to_balanced_json(text).strip()
+
+        return json.loads(text)
+
+    def debug_json_error(raw: str, e: json.JSONDecodeError, context: int = 160) -> str:
+        s = raw or ""
+        i = getattr(e, "pos", 0)
+        start = max(0, i - context)
+        end = min(len(s), i + context)
+        snippet = s[start:end]
+        caret_pos = max(0, i - start)
+
+        # try to compute line/col in the shown snippet (best-effort)
+        return (
+            f"{str(e)}\n"
+            f"--- context around char {i} ---\n"
+            f"{snippet}\n"
+            f"{' ' * caret_pos}^\n"
+        )
 
     def parse_retry_delay_seconds(err_text: str) -> int:
-        import re
         m = re.search(r"retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}", err_text)
         return int(m.group(1)) if m else 0
 
@@ -1314,8 +1387,10 @@ else:
             v = float(x)
         except:
             return 0.0
-        if v < 0: return 0.0
-        if v > 1: return 1.0
+        if v < 0:
+            return 0.0
+        if v > 1:
+            return 1.0
         return v
 
     # Run labeling
@@ -1332,9 +1407,9 @@ else:
 
             existing_rows = []
             existing_json = []
-            if st.session_state["product_intent_labels_df"] is not None:
+            if st.session_state.get("product_intent_labels_df") is not None:
                 existing_rows = st.session_state["product_intent_labels_df"].to_dict("records")
-            if st.session_state["product_intent_labels_json"] is not None:
+            if st.session_state.get("product_intent_labels_json") is not None:
                 existing_json = list(st.session_state["product_intent_labels_json"])
 
             already_done = set([x.get("product_id") for x in existing_json if x.get("product_id")])
@@ -1360,7 +1435,10 @@ else:
                             if retry_s <= 0:
                                 retry_s = int(min(60, (2 ** attempt) * 5))
                             retry_s = retry_s + random.randint(1, 3)
-                            st.warning(f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... (attempt {attempt+1}/{int(max_retries)+1})")
+                            st.warning(
+                                f"⚠️ Rate limit hit (429). Sleeping {retry_s}s then retrying... "
+                                f"(attempt {attempt+1}/{int(max_retries)+1})"
+                            )
                             time.sleep(retry_s)
                             continue
                         raise
@@ -1384,7 +1462,8 @@ else:
                         for _, r in batch.iterrows():
                             pid = str(r["product_id"])
                             pname = str(r.get("product_name", "") or r.get("product_title", ""))
-                            ptext = str(r.get("product_text", ""))[:int(product_text_chars)]
+                            # defensive: ensure text is a string and safely truncated
+                            ptext = str(r.get("product_text", "") or "")[:int(product_text_chars)]
                             batch_products.append({
                                 "product_id": pid,
                                 "product_name": pname,
@@ -1408,30 +1487,24 @@ Task for EACH product:
    - score (0.0 to 1.0, higher = more relevant)
    - evidence (a short phrase copied or paraphrased from the product text)
    - reason (1 short sentence)
-3) Return valid JSON only.
+3) Return JSON ONLY. No markdown. No extra text. Double quotes only. No trailing commas.
 
-Return STRICT minified JSON:
-{{
-  "labels":[
-    {{
-      "product_id":"...",
-      "product_name":"...",
-      "top_intents":[
-        {{
-          "intent_id":"IN_...",
-          "intent_name":"...",
-          "score":0.0,
-          "evidence":"...",
-          "reason":"..."
-        }}
-      ]
-    }}
-  ]
-}}
+Return STRICT minified JSON matching this schema:
+{{"labels":[{{"product_id":"...","product_name":"...","top_intents":[{{"intent_id":"IN_...","intent_name":"...","score":0.0,"evidence":"...","reason":"..."}}]}}]}}
 """.strip()
 
                         raw = call_llm_with_retry(prompt)
-                        data = extract_json_from_text(raw)
+
+                        # Parse with robust extractor and give actionable debug on failure
+                        try:
+                            data = extract_json_from_text(raw)
+                        except json.JSONDecodeError as e:
+                            st.error("❌ Invalid JSON returned by the model.")
+                            st.code(debug_json_error(raw, e))
+                            st.write("Raw model output (first 1200 chars):")
+                            st.code((raw or "")[:1200])
+                            st.stop()
+
                         batch_labels = data.get("labels", []) or []
 
                         for item in batch_labels:
@@ -1485,6 +1558,7 @@ Return STRICT minified JSON:
                                     "created_at": created_at
                                 })
 
+                        # update session each batch so progress survives crashes
                         st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
                         st.session_state["product_intent_labels_json"] = labels_json
 
@@ -1500,6 +1574,7 @@ Return STRICT minified JSON:
         except Exception as e:
             st.error(f"❌ Error labeling products: {str(e)}")
             st.exception(e)
+
 
 # ----------------------------------------------------------------------------
 # DISPLAY OUTPUTS (both modes)
