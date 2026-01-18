@@ -708,6 +708,36 @@ if "catalog_df" in st.session_state:
         # =========================
     # Chunk Size Advisor (based on user's catalog length)
     # =========================
+    with col1:
+    st.write("**Ontology Settings**")
+
+    n_lifestyles = st.number_input(
+        "Number of Lifestyle Categories",
+        min_value=3, max_value=15, value=6,
+        key="step2_n_lifestyles"
+    )
+
+    max_intents_per_lifestyle = st.number_input(
+        "Max Intents per Lifestyle",
+        min_value=2, max_value=10, value=5,
+        key="step2_max_intents"
+    )
+
+    chunk_size = st.number_input(
+        "Chunk Size (products per API call)",
+        min_value=20, max_value=100, value=40,
+        key="step2_chunk_size"
+    )
+
+    language = st.selectbox(
+        "Output Language",
+        ["en", "th", "zh", "ja", "es", "fr"],
+        key="step2_lang"
+    )
+
+    # =========================
+    # Chunk Size Advisor (NO API)
+    # =========================
     with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=True):
         est_mode = st.radio(
             "Estimator mode",
@@ -716,6 +746,7 @@ if "catalog_df" in st.session_state:
             horizontal=True,
             key="step2_token_est_mode"
         )
+
         chars_per_token = st.slider(
             "Chars-per-token factor (lower = more tokens)",
             min_value=2.0,
@@ -725,16 +756,21 @@ if "catalog_df" in st.session_state:
             key="step2_chars_per_token"
         )
 
-        # Use exactly what Step 2 sends: product_text truncated to 240 chars per product line
+        # Use exactly what Step 2 sends (matches your chunk prompt): product_text truncated to 240 chars
         sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, 240)
 
-        mode_key = "bytes" if est_mode.startswith("bytes") else "chars"
+        mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
+
         avg_tokens_per_product = sent_series.apply(
             lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
         ).mean()
 
         overhead_prompt = build_step2_overhead_prompt(language)
-        overhead_tokens = approx_tokens_from_text(overhead_prompt, mode=mode_key, chars_per_token=chars_per_token)
+        overhead_tokens = approx_tokens_from_text(
+            overhead_prompt,
+            mode=mode_key,
+            chars_per_token=chars_per_token
+        )
 
         st.write("**Estimated averages (based on your catalog):**")
         cA, cB, cC = st.columns(3)
@@ -742,7 +778,6 @@ if "catalog_df" in st.session_state:
         cB.metric("Fixed prompt overhead tokens / call", f"{overhead_tokens:,.0f}")
         cC.metric("Current chunk size", f"{int(chunk_size)} products")
 
-        # Token budget guidance (you can rename these labels however you like)
         budget_label = st.selectbox(
             "Choose a safe token budget for Step 2 prompt (estimate)",
             ["Conservative (~6k)", "Balanced (~12k)", "Aggressive (~20k)"],
@@ -751,18 +786,32 @@ if "catalog_df" in st.session_state:
         )
         token_budget = 6000 if "6k" in budget_label else (12000 if "12k" in budget_label else 20000)
 
-        # Recommended chunk size under budget:
         reco = int((token_budget - overhead_tokens) / max(avg_tokens_per_product, 1.0))
         reco = max(5, min(reco, 100))
 
-        st.success(
-            f"✅ Recommended chunk size (under {token_budget:,} tokens): **{reco}** products per call"
-        )
+        st.success(f"✅ Recommended chunk size (under {token_budget:,} tokens): **{reco}** products per call")
+
+        xs = list(range(5, 101, 5))
+        ys_total = [overhead_tokens + avg_tokens_per_product * x for x in xs]
+        ys_per_prod = [(overhead_tokens + avg_tokens_per_product * x) / x for x in xs]
+
+        df_curve = pd.DataFrame({
+            "chunk_size": xs,
+            "est_tokens_per_call": ys_total,
+            "est_tokens_per_product_all_in": ys_per_prod
+        }).set_index("chunk_size")
+
+        st.write("**Estimated tokens per call vs chunk size**")
+        st.line_chart(df_curve[["est_tokens_per_call"]])
+
+        st.write("**All-in tokens per product (overhead amortized)**")
+        st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
+
         st.caption(
-            "This is an estimate to help users pick chunk size based on their description length. "
-            "Bigger chunk = fewer calls but higher risk of long prompts / worse JSON. "
-            "Smaller chunk = more stable but more calls."
+            f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
+            "No API calls are made for this estimate."
         )
+
 
         # Visualize: estimated tokens per call vs chunk size
         xs = list(range(5, 101, 5))
