@@ -1449,7 +1449,16 @@ else:
         top_n = st.number_input("Top intents per campaign", min_value=3, max_value=12, value=6, key="step3_top_n")
         output_language = st.selectbox("Output Language", ["en", "th"], index=0, key="step3_output_language")
         include_lifestyle_context = st.checkbox("Include lifestyle context in prompt", value=True, key="step3_include_lifestyle")
+        intent_snippet_max_chars = st.number_input(
+            "Intent list max chars in prompt (intent_snippet_max_chars)",
+            min_value=2000,
+            max_value=120000,
+            value=16000,
+            step=1000,
+            help="This caps how many intents are included in the prompt. Too small = missing intents. Too large = bigger token cost."
+        )
 
+    
     with right:
         st.write("**Rate-limit settings (avoid 429)**")
         model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step3_model_name")
@@ -1851,7 +1860,7 @@ else:
             "intent_name": str(r.get("intent_name", "")).strip(),
             "definition": str(r.get("definition", "")).strip(),
         })
-    intent_snippet = safe_json_snippet(intent_candidates, max_chars=16000)
+    intent_snippet = safe_json_snippet(intent_candidates, max_chars=int(intent_snippet_max_chars))
 
     if label_btn:
         try:
