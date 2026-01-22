@@ -640,6 +640,86 @@ else:
 st.divider()
 
 # ============================================================================
+# CATEGORY DISTRIBUTION STATS
+# ============================================================================
+
+
+cat_col = "product_category"
+
+if "catalog_df" in st.session_state:
+    catalog_df = st.session_state["catalog_df"]
+
+    if cat_col in catalog_df.columns and "product_id" in catalog_df.columns:
+        # Normalize category text
+        cat_series = (
+            catalog_df[cat_col]
+            .fillna("Unknown")
+            .astype(str)
+            .str.strip()
+        )
+
+        # Count DISTINCT products per category (safe even if duplicates exist)
+        cat_counts = (
+            catalog_df.assign(_cat=cat_series)
+            .groupby("_cat")["product_id"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+
+        total_distinct_products = int(catalog_df["product_id"].nunique())
+        n_categories = int(cat_counts.shape[0])
+
+        # Key concentration stats
+        top1_share = float(cat_counts.iloc[0] / max(total_distinct_products, 1)) if n_categories > 0 else 0.0
+        top3_share = float(cat_counts.iloc[:3].sum() / max(total_distinct_products, 1)) if n_categories > 0 else 0.0
+
+        # "Rare" categories — choose ONE rule (keep it simple)
+        # Rule A: fewer than 30 distinct products in a category
+        rare_threshold_n = 30
+        rare_cat_count = int((cat_counts < rare_threshold_n).sum())
+
+        # Rule B (optional): categories <1% share (uncomment if you prefer)
+        # rare_threshold_pct = 0.01
+        # rare_cat_count = int(((cat_counts / max(total_distinct_products, 1)) < rare_threshold_pct).sum())
+
+        # --------------------------------------------------------------------
+        # UI: show stats block (place this AFTER your category overview table)
+        # --------------------------------------------------------------------
+        st.markdown("### 🧪 Category Distribution Stats (for chunking decision)")
+
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            st.metric("Total categories", f"{n_categories:,}")
+        with s2:
+            st.metric("Top-1 share", f"{top1_share*100:.1f}%")
+        with s3:
+            st.metric("Top-3 share", f"{top3_share*100:.1f}%")
+        with s4:
+            st.metric(f"Rare categories (<{rare_threshold_n})", f"{rare_cat_count:,}")
+
+        # Short explanation (keep readable for demo)
+        st.caption(
+            "Why this matters: If the catalog is heavily concentrated (high Top-1/Top-3 share), "
+            "LLM chunk prompts will over-see the dominant category and may bias Lifestyle parents. "
+            "In that case, use imbalance-aware chunking (e.g., stratified / cap) instead of simple shuffle."
+        )
+
+        # Optional: simple recommendation label (no action yet)
+        # Thresholds are easy to explain and tweak
+        if top1_share <= 0.35:
+            reco_mode = "Shuffle chunking (balanced enough)"
+        elif top1_share <= 0.55:
+            reco_mode = "Imbalance-aware chunking (stratified mix)"
+        else:
+            reco_mode = "Imbalance-aware chunking (cap + stratified mix)"
+
+        st.info(f"✅ Suggested chunking mode: **{reco_mode}**")
+
+    else:
+        st.info("👆 Category stats unavailable: `product_category` (or `product_id`) not found in catalog_df.")
+
+
+# ============================================================================
 # STEP 2: AI-POWERED ONTOLOGY GENERATION (OR REUSE VIA UPLOAD)
 # ============================================================================
 st.header("Step 2: AI-Powered Ontology Generation")
