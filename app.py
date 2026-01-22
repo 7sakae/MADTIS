@@ -822,7 +822,7 @@ st.subheader("🤖 Generate Ontology with AI (Gemini)")
 # =========================
 # Chunking Helpers (Method 2A: stratified mix / round-robin)
 # =========================
-def build_order_2a_stratified_mix(
+def build_order_category_stratified_interleaving(
     df: pd.DataFrame,
     cat_col: str = "product_category",
     seed: int = 42,
@@ -930,7 +930,7 @@ with col1:
 
     # NEW: seed to make 2A reproducible in demos
     chunk_seed = st.number_input(
-        "2A chunking seed (reproducible mix)",
+        "Interleaving seed (reproducible mix)",
         min_value=1, max_value=999999, value=42, step=1,
         key="step2_chunk_seed"
     )
@@ -941,7 +941,7 @@ with col1:
         key="step2_lang"
     )
 
-    st.caption("Chunking method: **2A Stratified Mix** (round-robin across product_category)")
+    st.caption("Chunking method: **Category-Stratified Interleaving (CSI)** (round-robin across product_category)")
 
 # =========================
 # Chunk Size Advisor (EXECUTIVE, NO API) — 2 columns wide
@@ -1091,14 +1091,14 @@ if generate_btn:
             # =========================
             # Build 2A (stratified mix) order
             # =========================
-            order = build_order_2a_stratified_mix(
+            order = build_order_category_stratified_interleaving(
                 catalog_df,
                 cat_col="product_category",
                 seed=int(chunk_seed),
             )
             ordered_texts = catalog_df.loc[order, "product_text"].fillna("").astype(str).tolist()
 
-            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size} (2A stratified mix)..."):
+            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size} (CSI: category-stratified interleaving)..."):
                 chunk_outputs = []
                 progress_bar = st.progress(0)
                 total_chunks = (len(ordered_texts) + int(chunk_size) - 1) // int(chunk_size)
@@ -1146,7 +1146,7 @@ Return STRICT minified JSON:
 
                     progress_bar.progress((idx + 1) / max(total_chunks, 1))
 
-                st.success(f"✅ Analyzed {total_chunks} chunks (2A stratified mix)")
+                st.success(f"✅ Analyzed {total_chunks} chunks (CSI: category-stratified interleaving)")
 
             with st.spinner("🔄 Consolidating ontology..."):
                 pool = {}
@@ -1233,7 +1233,7 @@ Return STRICT minified JSON:
                         "description": "AI-generated ontology from product catalog",
                         "n_lifestyles": len(dim_lifestyle_df),
                         "n_intents": len(dim_intent_df),
-                        "chunking_method": "2A_stratified_mix_round_robin",
+                        "chunking_method": "category_stratified_interleaving_round_robin",
                         "chunk_size": int(chunk_size),
                         "product_slice_chars": int(product_slice_chars),
                         "seed": int(chunk_seed),
