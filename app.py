@@ -815,158 +815,282 @@ if "catalog_df" in st.session_state:
     st.divider()
 
     # -------------------------
-    # Option A: Generate Ontology with Gemini
-    # -------------------------
-    st.subheader("🤖 Generate Ontology with AI (Gemini)")
+# Option A: Generate Ontology with Gemini  (UPDATED: 2A stratified mix + slice param + cost estimate)
+# -------------------------
+st.subheader("🤖 Generate Ontology with AI (Gemini)")
 
-    gemini_api_key = None
-    if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-        gemini_api_key = st.secrets["GEMINI_API_KEY"]
-        st.success("✅ Gemini API key loaded from secrets")
+# =========================
+# Chunking Helpers (Method 2A: stratified mix / round-robin)
+# =========================
+def build_order_2a_stratified_mix(
+    df: pd.DataFrame,
+    cat_col: str = "product_category",
+    seed: int = 42,
+) -> list:
+    """
+    Method 2A (default you chose): "Stratified mix"
+    - Shuffle items within each category
+    - Then round-robin pick 1 item from each category until all are exhausted
+    Result: early/mid chunks have better category diversity, reducing ontology bias.
+    Fallback: if cat_col missing -> simple shuffle of all rows.
+    Returns: list of row indices in the order we should feed the LLM.
+    """
+    rng = random.Random(int(seed))
+
+    if cat_col not in df.columns:
+        idxs = list(df.index)
+        rng.shuffle(idxs)
+        return idxs
+
+    # Normalize category
+    cats = (
+        df[cat_col]
+        .fillna("Unknown")
+        .astype(str)
+        .str.strip()
+        .replace("", "Unknown")
+    )
+
+    # Build per-category queues
+    buckets = {}
+    for i, c in zip(df.index.tolist(), cats.tolist()):
+        buckets.setdefault(c, []).append(i)
+
+    # Shuffle within each bucket
+    for c in list(buckets.keys()):
+        rng.shuffle(buckets[c])
+
+    # Round-robin: iterate categories (stable order by size desc helps “big cats” not lag too far)
+    cat_order = sorted(buckets.keys(), key=lambda k: len(buckets[k]), reverse=True)
+
+    ordered = []
+    exhausted = 0
+    while exhausted < len(cat_order):
+        exhausted = 0
+        for c in cat_order:
+            if buckets[c]:
+                ordered.append(buckets[c].pop())
+            else:
+                exhausted += 1
+
+    return ordered
+
+
+def chunk_list(xs, size: int):
+    for start in range(0, len(xs), int(size)):
+        yield xs[start : start + int(size)]
+
+
+# =========================
+# API Key
+# =========================
+gemini_api_key = None
+if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    st.success("✅ Gemini API key loaded from secrets")
+else:
+    gemini_api_key = st.text_input(
+        "Enter your Gemini API Key (only needed if you generate)",
+        type="password",
+        help="Get your API key from https://aistudio.google.com/apikey",
+        key="gemini_key_step2"
+    )
+    if gemini_api_key:
+        st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.write("**Ontology Settings**")
+
+    n_lifestyles = st.number_input(
+        "Number of Lifestyle Categories",
+        min_value=3, max_value=150, value=6,
+        key="step2_n_lifestyles"
+    )
+
+    max_intents_per_lifestyle = st.number_input(
+        "Max Intents per Lifestyle",
+        min_value=2, max_value=100, value=5,
+        key="step2_max_intents"
+    )
+
+    chunk_size = st.number_input(
+        "Chunk Size (products per API call)",
+        min_value=20, max_value=100, value=40,
+        key="step2_chunk_size"
+    )
+
+    # NEW: product slice length as parameter (default 240)
+    product_slice_chars = st.number_input(
+        "Max characters per product sent in Step 2 (slice length)",
+        min_value=80, max_value=1200, value=240, step=20,
+        key="step2_product_slice_chars"
+    )
+
+    # NEW: seed to make 2A reproducible in demos
+    chunk_seed = st.number_input(
+        "2A chunking seed (reproducible mix)",
+        min_value=1, max_value=999999, value=42, step=1,
+        key="step2_chunk_seed"
+    )
+
+    language = st.selectbox(
+        "Output Language",
+        ["en", "th", "zh", "ja", "es", "fr"],
+        key="step2_lang"
+    )
+
+    st.caption("Chunking method: **2A Stratified Mix** (round-robin across product_category)")
+
+    # =========================
+    # Chunk Size Advisor (NO API) + Cost Estimator
+    # =========================
+    with st.expander("📏 Chunk Size Advisor + Cost Estimator (NO API)", expanded=False):
+        est_mode = st.radio(
+            "Estimator mode",
+            ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
+            index=1,
+            horizontal=True,
+            key="step2_token_est_mode"
+        )
+
+        chars_per_token = st.slider(
+            "Chars-per-token factor (lower = more tokens)",
+            min_value=2.0,
+            max_value=6.0,
+            value=4.0,
+            step=0.5,
+            key="step2_chars_per_token"
+        )
+
+        mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
+
+        # Mirrors your prompt examples: t[:product_slice_chars]
+        sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, int(product_slice_chars))
+
+        avg_tokens_per_product = sent_series.apply(
+            lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
+        ).mean()
+
+        overhead_prompt = build_step2_overhead_prompt(language)
+        overhead_tokens = approx_tokens_from_text(
+            overhead_prompt,
+            mode=mode_key,
+            chars_per_token=chars_per_token
+        )
+
+        # Estimate calls
+        n_products = int(len(catalog_df))
+        calls_est = int((n_products + int(chunk_size) - 1) // int(chunk_size))
+
+        # Tokens per call (prompt-side estimate)
+        tokens_per_call_est = float(overhead_tokens + avg_tokens_per_product * float(chunk_size))
+
+        # Total tokens (prompt-side estimate)
+        total_tokens_est = float(calls_est) * tokens_per_call_est
+
+        cA, cB, cC, cD = st.columns(4)
+        cA.metric("Avg tokens / product (slice)", f"{avg_tokens_per_product:,.1f}")
+        cB.metric("Fixed prompt overhead / call", f"{overhead_tokens:,.0f}")
+        cC.metric("Estimated #calls", f"{calls_est:,}")
+        cD.metric("Est tokens / call", f"{tokens_per_call_est:,.0f}")
+
+        budget_label = st.selectbox(
+            "Choose a safe token budget per Step 2 call (estimate)",
+            ["Conservative (~6k)", "Balanced (~12k)", "Aggressive (~20k)"],
+            index=1,
+            key="step2_budget_label"
+        )
+        token_budget = 6000 if "6k" in budget_label else (12000 if "12k" in budget_label else 20000)
+
+        reco = int((token_budget - overhead_tokens) / max(avg_tokens_per_product, 1.0))
+        reco = max(5, min(reco, 100))
+
+        st.success(f"✅ Recommended chunk size (under {token_budget:,} tokens/call): **{reco}** products per call")
+
+        # NEW: Cost estimate (user provides tokens-per-dollar)
+        st.markdown("**💸 Cost estimate (rough)**")
+        tokens_per_dollar = st.number_input(
+            "Tokens per $1 (you decide)",
+            min_value=1_000.0, max_value=10_000_000.0, value=250_000.0, step=10_000.0,
+            help="Example: if pricing implies ~250k tokens per $1, put 250000 here.",
+            key="step2_tokens_per_dollar"
+        )
+        safety_multiplier = st.slider(
+            "Safety multiplier (include model output + padding)",
+            min_value=1.0, max_value=2.5, value=1.3, step=0.05,
+            help="1.3 is a decent default to account for response tokens + variability.",
+            key="step2_cost_safety_mult"
+        )
+
+        total_tokens_allin = total_tokens_est * float(safety_multiplier)
+        cost_est = total_tokens_allin / max(float(tokens_per_dollar), 1.0)
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Est total tokens (prompt only)", f"{total_tokens_est:,.0f}")
+        k2.metric("Est total tokens (all-in)", f"{total_tokens_allin:,.0f}")
+        k3.metric("Est cost ($)", f"{cost_est:,.2f}")
+
+        # Curves
+        xs = list(range(5, 101, 5))
+        ys_total = [float(overhead_tokens + avg_tokens_per_product * x) for x in xs]
+        ys_per_prod = [(float(overhead_tokens + avg_tokens_per_product * x) / x) for x in xs]
+
+        df_curve = pd.DataFrame({
+            "chunk_size": xs,
+            "est_tokens_per_call": ys_total,
+            "est_tokens_per_product_all_in": ys_per_prod
+        }).set_index("chunk_size")
+
+        st.write("**Estimated tokens per call vs chunk size**")
+        st.line_chart(df_curve[["est_tokens_per_call"]])
+
+        st.write("**All-in tokens per product (overhead amortized)**")
+        st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
+
+        st.caption(
+            f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
+            "No API calls are made for this estimate."
+        )
+
+with col2:
+    st.write("**Actions**")
+    generate_btn = st.button(
+        "🤖 Generate with AI",
+        type="primary",
+        use_container_width=True,
+        key="step2_generate_btn"
+    )
+    st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
+
+if generate_btn:
+    if not gemini_api_key:
+        st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
     else:
-        gemini_api_key = st.text_input(
-            "Enter your Gemini API Key (only needed if you generate)",
-            type="password",
-            help="Get your API key from https://aistudio.google.com/apikey",
-            key="gemini_key_step2"
-        )
-        if gemini_api_key:
-            st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
+        try:
+            model = make_gemini_model(gemini_api_key, "gemini-2.5-flash", json_mode=True, temperature=0.2)
 
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.write("**Ontology Settings**")
-
-        n_lifestyles = st.number_input(
-            "Number of Lifestyle Categories",
-            min_value=3, max_value=150, value=6,
-            key="step2_n_lifestyles"
-        )
-
-        max_intents_per_lifestyle = st.number_input(
-            "Max Intents per Lifestyle",
-            min_value=2, max_value=100, value=5,
-            key="step2_max_intents"
-        )
-
-        chunk_size = st.number_input(
-            "Chunk Size (products per API call)",
-            min_value=20, max_value=100, value=40,
-            key="step2_chunk_size"
-        )
-
-        language = st.selectbox(
-            "Output Language",
-            ["en", "th", "zh", "ja", "es", "fr"],
-            key="step2_lang"
-        )
-
-        # =========================
-        # Chunk Size Advisor (NO API)
-        # =========================
-        with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=False):
-            est_mode = st.radio(
-                "Estimator mode",
-                ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
-                index=1,
-                horizontal=True,
-                key="step2_token_est_mode"
+            # =========================
+            # Build 2A (stratified mix) order
+            # =========================
+            order = build_order_2a_stratified_mix(
+                catalog_df,
+                cat_col="product_category",
+                seed=int(chunk_seed),
             )
+            ordered_texts = catalog_df.loc[order, "product_text"].fillna("").astype(str).tolist()
 
-            chars_per_token = st.slider(
-                "Chars-per-token factor (lower = more tokens)",
-                min_value=2.0,
-                max_value=6.0,
-                value=4.0,
-                step=0.5,
-                key="step2_chars_per_token"
-            )
+            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size} (2A stratified mix)..."):
+                chunk_outputs = []
+                progress_bar = st.progress(0)
+                total_chunks = (len(ordered_texts) + int(chunk_size) - 1) // int(chunk_size)
 
-            mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
+                for idx, chunk in enumerate(chunk_list(ordered_texts, int(chunk_size))):
+                    # Use slice parameter here
+                    examples = "\n".join([f"- {t[:int(product_slice_chars)]}" for t in chunk])
 
-            # Mirrors your actual prompt examples (t[:240])
-            sent_series = catalog_df["product_text"].fillna("").astype(str).str.slice(0, 240)
-
-            avg_tokens_per_product = sent_series.apply(
-                lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
-            ).mean()
-
-            overhead_prompt = build_step2_overhead_prompt(language)
-            overhead_tokens = approx_tokens_from_text(
-                overhead_prompt,
-                mode=mode_key,
-                chars_per_token=chars_per_token
-            )
-
-            cA, cB, cC = st.columns(3)
-            cA.metric("Avg tokens / product (examples-only)", f"{avg_tokens_per_product:,.1f}")
-            cB.metric("Fixed prompt overhead tokens / call", f"{overhead_tokens:,.0f}")
-            cC.metric("Current chunk size", f"{int(chunk_size)} products")
-
-            budget_label = st.selectbox(
-                "Choose a safe token budget for Step 2 prompt (estimate)",
-                ["Conservative (~6k)", "Balanced (~12k)", "Aggressive (~20k)"],
-                index=1,
-                key="step2_budget_label"
-            )
-            token_budget = 6000 if "6k" in budget_label else (12000 if "12k" in budget_label else 20000)
-
-            reco = int((token_budget - overhead_tokens) / max(avg_tokens_per_product, 1.0))
-            reco = max(5, min(reco, 100))
-
-            st.success(f"✅ Recommended chunk size (under {token_budget:,} tokens): **{reco}** products per call")
-
-            xs = list(range(5, 101, 5))
-            ys_total = [overhead_tokens + avg_tokens_per_product * x for x in xs]
-            ys_per_prod = [(overhead_tokens + avg_tokens_per_product * x) / x for x in xs]
-
-            df_curve = pd.DataFrame({
-                "chunk_size": xs,
-                "est_tokens_per_call": ys_total,
-                "est_tokens_per_product_all_in": ys_per_prod
-            }).set_index("chunk_size")
-
-            st.write("**Estimated tokens per call vs chunk size**")
-            st.line_chart(df_curve[["est_tokens_per_call"]])
-
-            st.write("**All-in tokens per product (overhead amortized)**")
-            st.line_chart(df_curve[["est_tokens_per_product_all_in"]])
-
-            st.caption(
-                f"Rule used: tokens ≈ ({mode_key}) / {chars_per_token}. "
-                "No API calls are made for this estimate."
-            )
-
-    with col2:
-        st.write("**Actions**")
-        generate_btn = st.button(
-            "🤖 Generate with AI",
-            type="primary",
-            use_container_width=True,
-            key="step2_generate_btn"
-        )
-        st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
-
-    if generate_btn:
-        if not gemini_api_key:
-            st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
-        else:
-            try:
-                model = make_gemini_model(gemini_api_key, "gemini-2.5-flash", json_mode=True, temperature=0.2)
-
-                all_product_texts = catalog_df["product_text"].tolist()
-
-                with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size}..."):
-                    chunk_outputs = []
-                    progress_bar = st.progress(0)
-                    total_chunks = (len(all_product_texts) + int(chunk_size) - 1) // int(chunk_size)
-
-                    for idx, start in enumerate(range(0, len(all_product_texts), int(chunk_size))):
-                        chunk = all_product_texts[start:start + int(chunk_size)]
-                        examples = "\n".join([f"- {t[:240]}" for t in chunk])
-
-                        prompt = f"""
+                    prompt = f"""
 You are proposing a Lifestyle→Intent ontology for retail marketing.
 
 Input: Product catalog examples (titles + descriptions):
@@ -987,39 +1111,39 @@ Return STRICT minified JSON:
 {{"lifestyles":[{{"lifestyle_name":"...","definition":"...","intents":[{{"intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                        raw = call_llm_with_retry(
-                            model=model,
-                            prompt=prompt,
-                            rpm_limit=8,
-                            max_retries=4,
-                            last_ts_key="_last_llm_call_ts_step2"
-                        )
+                    raw = call_llm_with_retry(
+                        model=model,
+                        prompt=prompt,
+                        rpm_limit=8,
+                        max_retries=4,
+                        last_ts_key="_last_llm_call_ts_step2"
+                    )
 
-                        try:
-                            chunk_outputs.append(extract_json_from_text_robust(raw))
-                        except json.JSONDecodeError as e:
-                            st.error("❌ Invalid JSON returned by the model (Step 2 chunk).")
-                            st.code(debug_json_error(raw, e))
-                            st.code((raw or "")[:1200])
-                            st.stop()
+                    try:
+                        chunk_outputs.append(extract_json_from_text_robust(raw))
+                    except json.JSONDecodeError as e:
+                        st.error("❌ Invalid JSON returned by the model (Step 2 chunk).")
+                        st.code(debug_json_error(raw, e))
+                        st.code((raw or "")[:1200])
+                        st.stop()
 
-                        progress_bar.progress((idx + 1) / max(total_chunks, 1))
+                    progress_bar.progress((idx + 1) / max(total_chunks, 1))
 
-                    st.success(f"✅ Analyzed {total_chunks} chunks")
+                st.success(f"✅ Analyzed {total_chunks} chunks (2A stratified mix)")
 
-                with st.spinner("🔄 Consolidating ontology..."):
-                    pool = {}
-                    for obj in chunk_outputs:
-                        for ls in obj.get("lifestyles", []):
-                            ls_name = str(ls.get("lifestyle_name", "")).strip()
-                            if not ls_name:
-                                continue
-                            pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
-                            pool[ls_name]["intents"].extend(ls.get("intents", []))
+            with st.spinner("🔄 Consolidating ontology..."):
+                pool = {}
+                for obj in chunk_outputs:
+                    for ls in obj.get("lifestyles", []):
+                        ls_name = str(ls.get("lifestyle_name", "")).strip()
+                        if not ls_name:
+                            continue
+                        pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
+                        pool[ls_name]["intents"].extend(ls.get("intents", []))
 
-                    pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
+                pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
 
-                    prompt2 = f"""
+                prompt2 = f"""
 You are consolidating multiple ontology proposals into ONE final ontology.
 
 Input pool (may contain duplicates/overlaps):
@@ -1042,70 +1166,74 @@ Return STRICT minified JSON:
 {{"lifestyles":[{{"lifestyle_id":"LS_...","lifestyle_name":"...","definition":"...","intents":[{{"intent_id":"IN_...","intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                    raw2 = call_llm_with_retry(
-                        model=model,
-                        prompt=prompt2,
-                        rpm_limit=8,
-                        max_retries=4,
-                        last_ts_key="_last_llm_call_ts_step2"
-                    )
+                raw2 = call_llm_with_retry(
+                    model=model,
+                    prompt=prompt2,
+                    rpm_limit=8,
+                    max_retries=4,
+                    last_ts_key="_last_llm_call_ts_step2"
+                )
 
-                    try:
-                        ontology_data = extract_json_from_text_robust(raw2)
-                    except json.JSONDecodeError as e:
-                        st.error("❌ Invalid JSON returned by the model (Step 2 consolidation).")
-                        st.code(debug_json_error(raw2, e))
-                        st.code((raw2 or "")[:1200])
-                        st.stop()
+                try:
+                    ontology_data = extract_json_from_text_robust(raw2)
+                except json.JSONDecodeError as e:
+                    st.error("❌ Invalid JSON returned by the model (Step 2 consolidation).")
+                    st.code(debug_json_error(raw2, e))
+                    st.code((raw2 or "")[:1200])
+                    st.stop()
 
-                    dim_lifestyle_rows, dim_intent_rows = [], []
-                    for ls in ontology_data.get("lifestyles", []):
-                        dim_lifestyle_rows.append({
+                dim_lifestyle_rows, dim_intent_rows = [], []
+                for ls in ontology_data.get("lifestyles", []):
+                    dim_lifestyle_rows.append({
+                        "lifestyle_id": ls.get("lifestyle_id"),
+                        "lifestyle_name": ls.get("lifestyle_name"),
+                        "definition": ls.get("definition", ""),
+                        "version": "v1"
+                    })
+                    for it in ls.get("intents", []):
+                        dim_intent_rows.append({
+                            "intent_id": it.get("intent_id"),
+                            "intent_name": it.get("intent_name", ""),
+                            "definition": it.get("definition", ""),
                             "lifestyle_id": ls.get("lifestyle_id"),
-                            "lifestyle_name": ls.get("lifestyle_name"),
-                            "definition": ls.get("definition", ""),
+                            "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
+                            "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
                             "version": "v1"
                         })
-                        for it in ls.get("intents", []):
-                            dim_intent_rows.append({
-                                "intent_id": it.get("intent_id"),
-                                "intent_name": it.get("intent_name", ""),
-                                "definition": it.get("definition", ""),
-                                "lifestyle_id": ls.get("lifestyle_id"),
-                                "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
-                                "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
-                                "version": "v1"
-                            })
 
-                    dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
-                    dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
+                dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
+                dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
 
-                    ontology = {
-                        "name": "AI-Generated Product Ontology",
-                        "version": "v1",
-                        "created_at": pd.Timestamp.now().isoformat(),
-                        "total_products": len(catalog_df),
-                        "model": "gemini-2.5-flash",
-                        "language": language,
-                        "lifestyles": ontology_data.get("lifestyles", []),
-                        "metadata": {
-                            "description": "AI-generated ontology from product catalog",
-                            "n_lifestyles": len(dim_lifestyle_df),
-                            "n_intents": len(dim_intent_df)
-                        }
+                ontology = {
+                    "name": "AI-Generated Product Ontology",
+                    "version": "v1",
+                    "created_at": pd.Timestamp.now().isoformat(),
+                    "total_products": len(catalog_df),
+                    "model": "gemini-2.5-flash",
+                    "language": language,
+                    "lifestyles": ontology_data.get("lifestyles", []),
+                    "metadata": {
+                        "description": "AI-generated ontology from product catalog",
+                        "n_lifestyles": len(dim_lifestyle_df),
+                        "n_intents": len(dim_intent_df),
+                        "chunking_method": "2A_stratified_mix_round_robin",
+                        "chunk_size": int(chunk_size),
+                        "product_slice_chars": int(product_slice_chars),
+                        "seed": int(chunk_seed),
                     }
+                }
 
-                    st.session_state["ontology"] = ontology
-                    st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
-                    st.session_state["dim_intent_df"] = dim_intent_df
+                st.session_state["ontology"] = ontology
+                st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+                st.session_state["dim_intent_df"] = dim_intent_df
 
-                    st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
+                st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
 
-            except ImportError:
-                st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
-            except Exception as e:
-                st.error(f"❌ Error generating ontology: {str(e)}")
-                st.exception(e)
+        except ImportError:
+            st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+        except Exception as e:
+            st.error(f"❌ Error generating ontology: {str(e)}")
+            st.exception(e)
 
     # -------------------------
     # Display & Downloads (works for both generated or uploaded ontology)
