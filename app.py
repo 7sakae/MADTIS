@@ -943,8 +943,9 @@ with col1:
 
     st.caption("Chunking method: **2A Stratified Mix** (round-robin across product_category)")
 
- # =========================
+# =========================
 # Chunk Size Advisor (EXECUTIVE, NO API) — 2 columns wide
+# NOTE: product_slice_chars is defined in the upper section already.
 # =========================
 with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
 
@@ -972,16 +973,6 @@ with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
             value=4.0,
             step=0.5,
             key="step2_chars_per_token_exec"
-        )
-
-        # NEW: product slice chars parameter (default 240)
-        product_slice_chars = st.number_input(
-            "Product slice chars (per product example)",
-            min_value=60,
-            max_value=1200,
-            value=240,
-            step=30,
-            key="step2_product_slice_chars_exec"
         )
 
         token_budget = st.select_slider(
@@ -1019,6 +1010,7 @@ with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
 
         mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
 
+        # Use product_slice_chars from the upper settings (default 240 there)
         # Mirrors your actual prompt examples (t[:product_slice_chars])
         sent_series = (
             catalog_df["product_text"]
@@ -1076,6 +1068,7 @@ with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
             "Notes: This is a rough estimate (no API calls). "
             "Cost uses your assumed Tokens per $1 and a safety multiplier for output/variance."
         )
+
 
 
 with col2:
