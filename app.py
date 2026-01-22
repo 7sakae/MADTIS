@@ -2147,67 +2147,67 @@ if st.session_state.get("campaign_audience_ranked_df") is not None:
         use_container_width=True
     )
 
-# ============================================================================
-# STEP 7: EXPLORER DASHBOARD (LIGHTWEIGHT)
-# ============================================================================
-st.divider()
-st.header("Step 7: Explorer Dashboard")
-st.caption("Quick drill-down for a customer: see top intents, top lifestyles (if available), and recent purchases.")
+# # ============================================================================
+# # STEP 7: EXPLORER DASHBOARD (LIGHTWEIGHT)
+# # ============================================================================
+# st.divider()
+# st.header("Step 7: Explorer Dashboard")
+# st.caption("Quick drill-down for a customer: see top intents, top lifestyles (if available), and recent purchases.")
 
-if "txn_df" not in st.session_state or st.session_state.get("customer_intent_profile_df") is None:
-    st.info("Build profiles first (Step 5).")
-else:
-    tx = st.session_state["txn_df"].copy()
-    tx["customer_id"] = tx["customer_id"].astype(str)
-    tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
+# if "txn_df" not in st.session_state or st.session_state.get("customer_intent_profile_df") is None:
+#     st.info("Build profiles first (Step 5).")
+# else:
+#     tx = st.session_state["txn_df"].copy()
+#     tx["customer_id"] = tx["customer_id"].astype(str)
+#     tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
 
-    customers = sorted(tx["customer_id"].dropna().unique().tolist())
-    if len(customers) == 0:
-        st.info("No customers found in transactions.")
-    else:
-        pick = st.selectbox("Pick a customer_id to inspect", customers, key="step7_customer_pick")
+#     customers = sorted(tx["customer_id"].dropna().unique().tolist())
+#     if len(customers) == 0:
+#         st.info("No customers found in transactions.")
+#     else:
+#         pick = st.selectbox("Pick a customer_id to inspect", customers, key="step7_customer_pick")
 
-        # Customer overview
-        c_tx = tx[tx["customer_id"] == str(pick)].copy()
-        total_spend = float(c_tx["amt"].sum()) if "amt" in c_tx.columns else 0.0
-        txn_count = int(len(c_tx))
-        last_dt = c_tx["tx_date"].max()
+#         # Customer overview
+#         c_tx = tx[tx["customer_id"] == str(pick)].copy()
+#         total_spend = float(c_tx["amt"].sum()) if "amt" in c_tx.columns else 0.0
+#         txn_count = int(len(c_tx))
+#         last_dt = c_tx["tx_date"].max()
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total spend", f"{total_spend:,.2f}")
-        c2.metric("Transactions", f"{txn_count:,}")
-        c3.metric("Last purchase date", str(last_dt.date()) if pd.notna(last_dt) else "-")
+#         c1, c2, c3 = st.columns(3)
+#         c1.metric("Total spend", f"{total_spend:,.2f}")
+#         c2.metric("Transactions", f"{txn_count:,}")
+#         c3.metric("Last purchase date", str(last_dt.date()) if pd.notna(last_dt) else "-")
 
-        # Top intents
-        st.subheader("Top Intents")
-        ci = st.session_state["customer_intent_profile_df"].copy()
-        ci = ci[ci["customer_id"].astype(str) == str(pick)].sort_values("intent_share", ascending=False)
+#         # Top intents
+#         st.subheader("Top Intents")
+#         ci = st.session_state["customer_intent_profile_df"].copy()
+#         ci = ci[ci["customer_id"].astype(str) == str(pick)].sort_values("intent_share", ascending=False)
 
-        st.dataframe(ci.head(30), use_container_width=True)
+#         st.dataframe(ci.head(30), use_container_width=True)
 
-        # Top lifestyles if available
-        if st.session_state.get("customer_lifestyle_profile_df") is not None:
-            st.subheader("Top Lifestyles")
-            cl = st.session_state["customer_lifestyle_profile_df"].copy()
-            cl = cl[cl["customer_id"].astype(str) == str(pick)].sort_values("lifestyle_share", ascending=False)
-            st.dataframe(cl.head(20), use_container_width=True)
+#         # Top lifestyles if available
+#         if st.session_state.get("customer_lifestyle_profile_df") is not None:
+#             st.subheader("Top Lifestyles")
+#             cl = st.session_state["customer_lifestyle_profile_df"].copy()
+#             cl = cl[cl["customer_id"].astype(str) == str(pick)].sort_values("lifestyle_share", ascending=False)
+#             st.dataframe(cl.head(20), use_container_width=True)
 
-        # Recent purchases
-        st.subheader("Recent Purchases")
-        recent = c_tx.sort_values("tx_date", ascending=False).head(30).copy()
-        if "catalog_df" in st.session_state:
-            cat = st.session_state["catalog_df"][["product_id", "product_name"]].copy()
-            cat["product_id"] = cat["product_id"].astype(str)
-            recent["product_id"] = recent["product_id"].astype(str)
-            recent = recent.merge(cat, on="product_id", how="left")
+#         # Recent purchases
+#         st.subheader("Recent Purchases")
+#         recent = c_tx.sort_values("tx_date", ascending=False).head(30).copy()
+#         if "catalog_df" in st.session_state:
+#             cat = st.session_state["catalog_df"][["product_id", "product_name"]].copy()
+#             cat["product_id"] = cat["product_id"].astype(str)
+#             recent["product_id"] = recent["product_id"].astype(str)
+#             recent = recent.merge(cat, on="product_id", how="left")
 
-        show_cols = []
-        for col in ["tx_date", "tx_id", "product_id", "product_name", "qty", "price", "amt"]:
-            if col in recent.columns:
-                show_cols.append(col)
+#         show_cols = []
+#         for col in ["tx_date", "tx_id", "product_id", "product_name", "qty", "price", "amt"]:
+#             if col in recent.columns:
+#                 show_cols.append(col)
 
-        st.dataframe(recent[show_cols], use_container_width=True)
+#         st.dataframe(recent[show_cols], use_container_width=True)
 
-st.divider()
-st.caption("End of app.")
+# st.divider()
+# st.caption("End of app.")
 
