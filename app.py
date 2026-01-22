@@ -697,12 +697,12 @@ if "catalog_df" in st.session_state:
         with s4:
             st.metric(f"Rare categories (<{rare_threshold_n})", f"{rare_cat_count:,}")
 
-        # Short explanation (keep readable for demo)
-        st.caption(
-            "Why this matters: If the catalog is heavily concentrated (high Top-1/Top-3 share), "
-            "LLM chunk prompts will over-see the dominant category and may bias Lifestyle parents. "
-            "In that case, use imbalance-aware chunking (e.g., stratified / cap) instead of simple shuffle."
-        )
+        # # Short explanation (keep readable for demo)
+        # st.caption(
+        #     "Why this matters: If the catalog is heavily concentrated (high Top-1/Top-3 share), "
+        #     "LLM chunk prompts will over-see the dominant category and may bias Lifestyle parents. "
+        #     "In that case, use imbalance-aware chunking (e.g., stratified / cap) instead of simple shuffle."
+        # )
 
         # Optional: simple recommendation label (no action yet)
         # Thresholds are easy to explain and tweak
