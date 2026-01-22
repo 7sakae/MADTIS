@@ -814,190 +814,271 @@ if "catalog_df" in st.session_state:
 
     st.divider()
 
-# -------------------------
-# Option A: Generate Ontology with Gemini  (UPDATED: 2A stratified mix + slice param + cost estimate)
-# -------------------------
-st.subheader("🤖 Generate Ontology with AI (Gemini)")
+    # -------------------------
+    # Option A: Generate Ontology with Gemini
+    # -------------------------
+    st.subheader("🤖 Generate Ontology with AI (Gemini)")
 
-# =========================
-# Chunking Helpers (Method 2A: stratified mix / round-robin)
-# =========================
-def build_order_category_stratified_interleaving(
-    df: pd.DataFrame,
-    cat_col: str = "product_category",
-    seed: int = 42,
-) -> list:
-    """
-    Method 2A (default you chose): "Stratified mix"
-    - Shuffle items within each category
-    - Then round-robin pick 1 item from each category until all are exhausted
-    Result: early/mid chunks have better category diversity, reducing ontology bias.
-    Fallback: if cat_col missing -> simple shuffle of all rows.
-    Returns: list of row indices in the order we should feed the LLM.
-    """
-    rng = random.Random(int(seed))
+    # =========================
+    # Chunking Helpers (CSI)
+    # =========================
+    def build_order_category_stratified_interleaving(
+        df: pd.DataFrame,
+        cat_col: str = "product_category",
+        seed: int = 42,
+    ) -> list:
+        """
+        Chunking method: Category-Stratified Interleaving (CSI)
+        - Shuffle items within each category bucket
+        - Then interleave categories (round-robin pick 1 per category) until exhausted
+        Result: early/mid chunks have better category diversity, reducing ontology bias.
+        Fallback: if cat_col missing -> shuffle all rows.
+        Returns: list of row indices in the order we feed the LLM.
+        """
+        rng = random.Random(int(seed))
 
-    if cat_col not in df.columns:
-        idxs = list(df.index)
-        rng.shuffle(idxs)
-        return idxs
+        if cat_col not in df.columns:
+            idxs = list(df.index)
+            rng.shuffle(idxs)
+            return idxs
 
-    # Normalize category
-    cats = (
-        df[cat_col]
-        .fillna("Unknown")
-        .astype(str)
-        .str.strip()
-        .replace("", "Unknown")
-    )
+        cats = (
+            df[cat_col]
+            .fillna("Unknown")
+            .astype(str)
+            .str.strip()
+            .replace("", "Unknown")
+        )
 
-    # Build per-category queues
-    buckets = {}
-    for i, c in zip(df.index.tolist(), cats.tolist()):
-        buckets.setdefault(c, []).append(i)
+        buckets = {}
+        for i, c in zip(df.index.tolist(), cats.tolist()):
+            buckets.setdefault(c, []).append(i)
 
-    # Shuffle within each bucket
-    for c in list(buckets.keys()):
-        rng.shuffle(buckets[c])
+        for c in list(buckets.keys()):
+            rng.shuffle(buckets[c])
 
-    # Round-robin: iterate categories (stable order by size desc helps “big cats” not lag too far)
-    cat_order = sorted(buckets.keys(), key=lambda k: len(buckets[k]), reverse=True)
+        # Big categories first (helps them show up early), then interleave
+        cat_order = sorted(buckets.keys(), key=lambda k: len(buckets[k]), reverse=True)
 
-    ordered = []
-    exhausted = 0
-    while exhausted < len(cat_order):
+        ordered = []
         exhausted = 0
-        for c in cat_order:
-            if buckets[c]:
-                ordered.append(buckets[c].pop())
-            else:
-                exhausted += 1
-
-    return ordered
-
-
-def chunk_list(xs, size: int):
-    for start in range(0, len(xs), int(size)):
-        yield xs[start : start + int(size)]
+        while exhausted < len(cat_order):
+            exhausted = 0
+            for c in cat_order:
+                if buckets[c]:
+                    ordered.append(buckets[c].pop())
+                else:
+                    exhausted += 1
+        return ordered
 
 
-# =========================
-# API Key
-# =========================
-gemini_api_key = None
-if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-    gemini_api_key = st.secrets["GEMINI_API_KEY"]
-    st.success("✅ Gemini API key loaded from secrets")
-else:
-    gemini_api_key = st.text_input(
-        "Enter your Gemini API Key (only needed if you generate)",
-        type="password",
-        help="Get your API key from https://aistudio.google.com/apikey",
-        key="gemini_key_step2"
-    )
-    if gemini_api_key:
-        st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.write("**Ontology Settings**")
-
-    n_lifestyles = st.number_input(
-        "Number of Lifestyle Categories",
-        min_value=3, max_value=150, value=6,
-        key="step2_n_lifestyles"
-    )
-
-    max_intents_per_lifestyle = st.number_input(
-        "Max Intents per Lifestyle",
-        min_value=2, max_value=100, value=5,
-        key="step2_max_intents"
-    )
-
-    chunk_size = st.number_input(
-        "Chunk Size (products per API call)",
-        min_value=20, max_value=100, value=40,
-        key="step2_chunk_size"
-    )
-
-    # NEW: product slice length as parameter (default 240)
-    product_slice_chars = st.number_input(
-        "Max characters per product sent in Step 2 (slice length)",
-        min_value=80, max_value=1200, value=240, step=20,
-        key="step2_product_slice_chars"
-    )
-
-    # NEW: seed to make 2A reproducible in demos
-    chunk_seed = st.number_input(
-        "Interleaving seed (reproducible mix)",
-        min_value=1, max_value=999999, value=42, step=1,
-        key="step2_chunk_seed"
-    )
-
-    language = st.selectbox(
-        "Output Language",
-        ["en", "th", "zh", "ja", "es", "fr"],
-        key="step2_lang"
-    )
-
-    st.caption("Chunking method: **Category-Stratified Interleaving (CSI)** (round-robin across product_category)")
-
-# =========================
-# Chunk Size Advisor (EXECUTIVE, NO API) — 2 columns wide
-# NOTE: product_slice_chars is defined in the upper section already.
-# =========================
-with st.expander("📏 Campaign Size Advisor (Step 3)", expanded=False):
-    # Avg characters per campaign_brief
-    briefs = campaigns_df["campaign_brief"].fillna("").astype(str)
-    avg_chars_per_campaign = float(briefs.str.len().mean()) if len(briefs) else 0.0
-
-    # Total campaigns
-    n_campaigns = int(len(campaigns_df))
-
-    c1, c2 = st.columns(2)
-    c1.metric("Avg characters / campaign brief", f"{avg_chars_per_campaign:,.0f}")
-    c2.metric("# campaigns", f"{n_campaigns:,}")
+    def chunk_list(xs, size: int):
+        for start in range(0, len(xs), int(size)):
+            yield xs[start : start + int(size)]
 
 
-
-with col2:
-    st.write("**Actions**")
-    generate_btn = st.button(
-        "🤖 Generate with AI",
-        type="primary",
-        use_container_width=True,
-        key="step2_generate_btn"
-    )
-    st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
-
-if generate_btn:
-    if not gemini_api_key:
-        st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
+    # =========================
+    # API Key
+    # =========================
+    gemini_api_key = None
+    if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+        gemini_api_key = st.secrets["GEMINI_API_KEY"]
+        st.success("✅ Gemini API key loaded from secrets")
     else:
-        try:
-            model = make_gemini_model(gemini_api_key, "gemini-2.5-flash", json_mode=True, temperature=0.2)
+        gemini_api_key = st.text_input(
+            "Enter your Gemini API Key (only needed if you generate)",
+            type="password",
+            help="Get your API key from https://aistudio.google.com/apikey",
+            key="gemini_key_step2"
+        )
+        if gemini_api_key:
+            st.info("💡 Tip: Add your API key to Streamlit secrets for persistence")
 
-            # =========================
-            # Build 2A (stratified mix) order
-            # =========================
-            order = build_order_category_stratified_interleaving(
-                catalog_df,
-                cat_col="product_category",
-                seed=int(chunk_seed),
-            )
-            ordered_texts = catalog_df.loc[order, "product_text"].fillna("").astype(str).tolist()
+    col1, col2 = st.columns([2, 1])
 
-            with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size} (CSI: category-stratified interleaving)..."):
-                chunk_outputs = []
-                progress_bar = st.progress(0)
-                total_chunks = (len(ordered_texts) + int(chunk_size) - 1) // int(chunk_size)
+    with col1:
+        st.write("**Ontology Settings**")
 
-                for idx, chunk in enumerate(chunk_list(ordered_texts, int(chunk_size))):
-                    # Use slice parameter here
-                    examples = "\n".join([f"- {t[:int(product_slice_chars)]}" for t in chunk])
+        n_lifestyles = st.number_input(
+            "Number of Lifestyle Categories",
+            min_value=3, max_value=150, value=6,
+            key="step2_n_lifestyles"
+        )
 
-                    prompt = f"""
+        max_intents_per_lifestyle = st.number_input(
+            "Max Intents per Lifestyle",
+            min_value=2, max_value=100, value=5,
+            key="step2_max_intents"
+        )
+
+        chunk_size = st.number_input(
+            "Chunk Size (products per API call)",
+            min_value=20, max_value=100, value=40,
+            key="step2_chunk_size"
+        )
+
+        product_slice_chars = st.number_input(
+            "Max characters per product sent in Step 2 (slice length)",
+            min_value=80, max_value=1200, value=240, step=20,
+            key="step2_product_slice_chars"
+        )
+
+        chunk_seed = st.number_input(
+            "Interleaving seed (reproducible mix)",
+            min_value=1, max_value=999999, value=42, step=1,
+            key="step2_chunk_seed"
+        )
+
+        language = st.selectbox(
+            "Output Language",
+            ["en", "th", "zh", "ja", "es", "fr"],
+            key="step2_lang"
+        )
+
+        st.caption("Chunking method: **Category-Stratified Interleaving (CSI)** (interleaves across product_category)")
+
+        # =========================
+        # Chunk Size Advisor (EXECUTIVE, NO API) — 2 columns wide
+        # =========================
+        with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
+            adv_left, adv_right = st.columns([1, 1])
+
+            with adv_left:
+                st.markdown("#### Inputs")
+                est_mode = st.radio(
+                    "Estimator mode",
+                    ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
+                    index=1,
+                    horizontal=True,
+                    key="step2_token_est_mode_exec"
+                )
+                mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
+
+                chars_per_token = st.slider(
+                    "Chars-per-token factor (lower = more tokens)",
+                    min_value=2.0,
+                    max_value=6.0,
+                    value=4.0,
+                    step=0.5,
+                    key="step2_chars_per_token_exec"
+                )
+
+                token_budget = st.select_slider(
+                    "Per-call token budget (estimate)",
+                    options=[6000, 8000, 12000, 16000, 20000],
+                    value=12000,
+                    key="step2_token_budget_exec"
+                )
+
+                st.markdown("#### Cost inputs")
+                tokens_per_dollar = st.number_input(
+                    "Tokens per $1 (your pricing assumption)",
+                    min_value=1000.0,
+                    max_value=5_000_000.0,
+                    value=250_000.0,
+                    step=10_000.0,
+                    key="step2_tokens_per_dollar_exec"
+                )
+
+                safety_multiplier = st.slider(
+                    "Safety multiplier (output + variance)",
+                    min_value=1.0,
+                    max_value=2.0,
+                    value=1.3,
+                    step=0.05,
+                    key="step2_safety_mult_exec"
+                )
+
+            with adv_right:
+                st.markdown("#### Executive KPIs")
+
+                # Mirrors your prompt examples (slice)
+                sent_series = (
+                    catalog_df["product_text"]
+                    .fillna("")
+                    .astype(str)
+                    .str.slice(0, int(product_slice_chars))
+                )
+
+                avg_tokens_per_product = sent_series.apply(
+                    lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
+                ).mean()
+
+                overhead_prompt = build_step2_overhead_prompt(language)
+                overhead_tokens = approx_tokens_from_text(
+                    overhead_prompt,
+                    mode=mode_key,
+                    chars_per_token=chars_per_token
+                )
+
+                cs = int(chunk_size)
+                n_products = int(len(catalog_df))
+
+                est_tokens_per_call = float(overhead_tokens + avg_tokens_per_product * cs)
+                est_calls = int((n_products + cs - 1) // cs)
+
+                reco = int((float(token_budget) - float(overhead_tokens)) / max(float(avg_tokens_per_product), 1.0))
+                reco = max(5, min(reco, 100))
+
+                est_total_tokens_prompt = est_tokens_per_call * est_calls
+                est_total_tokens_allin = est_total_tokens_prompt * float(safety_multiplier)
+                est_cost = est_total_tokens_allin / max(float(tokens_per_dollar), 1.0)
+
+                k1, k2 = st.columns(2)
+                with k1:
+                    st.metric("Avg tokens / product", f"{avg_tokens_per_product:,.1f}")
+                with k2:
+                    st.metric("Fixed overhead / call", f"{overhead_tokens:,.0f}")
+
+                k3, k4 = st.columns(2)
+                with k3:
+                    st.metric("Est tokens / call", f"{est_tokens_per_call:,.0f}")
+                with k4:
+                    st.metric("Est #calls", f"{est_calls:,}")
+
+                k5, k6 = st.columns(2)
+                with k5:
+                    st.metric("Recommended chunk size", f"{reco} (under {int(token_budget):,} tokens)")
+                with k6:
+                    st.metric("Est total cost ($)", f"{est_cost:,.2f}")
+
+                st.caption(
+                    "Rough estimate (no API calls). Cost uses your tokens-per-$ assumption and a safety multiplier."
+                )
+
+    with col2:
+        st.write("**Actions**")
+        generate_btn = st.button(
+            "🤖 Generate with AI",
+            type="primary",
+            use_container_width=True,
+            key="step2_generate_btn"
+        )
+        st.info(f"Will analyze {len(catalog_df)} products using Gemini 2.5 Flash")
+
+    if generate_btn:
+        if not gemini_api_key:
+            st.error("⚠️ Please provide a Gemini API key to generate ontology (or upload an existing ontology above).")
+        else:
+            try:
+                model = make_gemini_model(gemini_api_key, "gemini-2.5-flash", json_mode=True, temperature=0.2)
+
+                order = build_order_category_stratified_interleaving(
+                    catalog_df,
+                    cat_col="product_category",
+                    seed=int(chunk_seed),
+                )
+                ordered_texts = catalog_df.loc[order, "product_text"].fillna("").astype(str).tolist()
+
+                with st.spinner(f"🤖 Analyzing products in chunks of {chunk_size} (CSI: category-stratified interleaving)..."):
+                    chunk_outputs = []
+                    progress_bar = st.progress(0)
+                    total_chunks = (len(ordered_texts) + int(chunk_size) - 1) // int(chunk_size)
+
+                    for idx, chunk in enumerate(chunk_list(ordered_texts, int(chunk_size))):
+                        examples = "\n".join([f"- {t[:int(product_slice_chars)]}" for t in chunk])
+
+                        prompt = f"""
 You are proposing a Lifestyle→Intent ontology for retail marketing.
 
 Input: Product catalog examples (titles + descriptions):
@@ -1018,39 +1099,39 @@ Return STRICT minified JSON:
 {{"lifestyles":[{{"lifestyle_name":"...","definition":"...","intents":[{{"intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                    raw = call_llm_with_retry(
-                        model=model,
-                        prompt=prompt,
-                        rpm_limit=8,
-                        max_retries=4,
-                        last_ts_key="_last_llm_call_ts_step2"
-                    )
+                        raw = call_llm_with_retry(
+                            model=model,
+                            prompt=prompt,
+                            rpm_limit=8,
+                            max_retries=4,
+                            last_ts_key="_last_llm_call_ts_step2"
+                        )
 
-                    try:
-                        chunk_outputs.append(extract_json_from_text_robust(raw))
-                    except json.JSONDecodeError as e:
-                        st.error("❌ Invalid JSON returned by the model (Step 2 chunk).")
-                        st.code(debug_json_error(raw, e))
-                        st.code((raw or "")[:1200])
-                        st.stop()
+                        try:
+                            chunk_outputs.append(extract_json_from_text_robust(raw))
+                        except json.JSONDecodeError as e:
+                            st.error("❌ Invalid JSON returned by the model (Step 2 chunk).")
+                            st.code(debug_json_error(raw, e))
+                            st.code((raw or "")[:1200])
+                            st.stop()
 
-                    progress_bar.progress((idx + 1) / max(total_chunks, 1))
+                        progress_bar.progress((idx + 1) / max(total_chunks, 1))
 
-                st.success(f"✅ Analyzed {total_chunks} chunks (CSI: category-stratified interleaving)")
+                    st.success(f"✅ Analyzed {total_chunks} chunks (CSI: category-stratified interleaving)")
 
-            with st.spinner("🔄 Consolidating ontology..."):
-                pool = {}
-                for obj in chunk_outputs:
-                    for ls in obj.get("lifestyles", []):
-                        ls_name = str(ls.get("lifestyle_name", "")).strip()
-                        if not ls_name:
-                            continue
-                        pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
-                        pool[ls_name]["intents"].extend(ls.get("intents", []))
+                with st.spinner("🔄 Consolidating ontology..."):
+                    pool = {}
+                    for obj in chunk_outputs:
+                        for ls in obj.get("lifestyles", []):
+                            ls_name = str(ls.get("lifestyle_name", "")).strip()
+                            if not ls_name:
+                                continue
+                            pool.setdefault(ls_name, {"definition": ls.get("definition", ""), "intents": []})
+                            pool[ls_name]["intents"].extend(ls.get("intents", []))
 
-                pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
+                    pool_text = json.dumps(pool, ensure_ascii=False)[:20000]
 
-                prompt2 = f"""
+                    prompt2 = f"""
 You are consolidating multiple ontology proposals into ONE final ontology.
 
 Input pool (may contain duplicates/overlaps):
@@ -1073,74 +1154,74 @@ Return STRICT minified JSON:
 {{"lifestyles":[{{"lifestyle_id":"LS_...","lifestyle_name":"...","definition":"...","intents":[{{"intent_id":"IN_...","intent_name":"...","definition":"...","include_examples":["..."],"exclude_examples":["..."]}}]}}]}}
 """.strip()
 
-                raw2 = call_llm_with_retry(
-                    model=model,
-                    prompt=prompt2,
-                    rpm_limit=8,
-                    max_retries=4,
-                    last_ts_key="_last_llm_call_ts_step2"
-                )
+                    raw2 = call_llm_with_retry(
+                        model=model,
+                        prompt=prompt2,
+                        rpm_limit=8,
+                        max_retries=4,
+                        last_ts_key="_last_llm_call_ts_step2"
+                    )
 
-                try:
-                    ontology_data = extract_json_from_text_robust(raw2)
-                except json.JSONDecodeError as e:
-                    st.error("❌ Invalid JSON returned by the model (Step 2 consolidation).")
-                    st.code(debug_json_error(raw2, e))
-                    st.code((raw2 or "")[:1200])
-                    st.stop()
+                    try:
+                        ontology_data = extract_json_from_text_robust(raw2)
+                    except json.JSONDecodeError as e:
+                        st.error("❌ Invalid JSON returned by the model (Step 2 consolidation).")
+                        st.code(debug_json_error(raw2, e))
+                        st.code((raw2 or "")[:1200])
+                        st.stop()
 
-                dim_lifestyle_rows, dim_intent_rows = [], []
-                for ls in ontology_data.get("lifestyles", []):
-                    dim_lifestyle_rows.append({
-                        "lifestyle_id": ls.get("lifestyle_id"),
-                        "lifestyle_name": ls.get("lifestyle_name"),
-                        "definition": ls.get("definition", ""),
-                        "version": "v1"
-                    })
-                    for it in ls.get("intents", []):
-                        dim_intent_rows.append({
-                            "intent_id": it.get("intent_id"),
-                            "intent_name": it.get("intent_name", ""),
-                            "definition": it.get("definition", ""),
+                    dim_lifestyle_rows, dim_intent_rows = [], []
+                    for ls in ontology_data.get("lifestyles", []):
+                        dim_lifestyle_rows.append({
                             "lifestyle_id": ls.get("lifestyle_id"),
-                            "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
-                            "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                            "lifestyle_name": ls.get("lifestyle_name"),
+                            "definition": ls.get("definition", ""),
                             "version": "v1"
                         })
+                        for it in ls.get("intents", []):
+                            dim_intent_rows.append({
+                                "intent_id": it.get("intent_id"),
+                                "intent_name": it.get("intent_name", ""),
+                                "definition": it.get("definition", ""),
+                                "lifestyle_id": ls.get("lifestyle_id"),
+                                "include_examples": json.dumps(it.get("include_examples", []), ensure_ascii=False),
+                                "exclude_examples": json.dumps(it.get("exclude_examples", []), ensure_ascii=False),
+                                "version": "v1"
+                            })
 
-                dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
-                dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
+                    dim_lifestyle_df = pd.DataFrame(dim_lifestyle_rows).drop_duplicates()
+                    dim_intent_df = pd.DataFrame(dim_intent_rows).drop_duplicates()
 
-                ontology = {
-                    "name": "AI-Generated Product Ontology",
-                    "version": "v1",
-                    "created_at": pd.Timestamp.now().isoformat(),
-                    "total_products": len(catalog_df),
-                    "model": "gemini-2.5-flash",
-                    "language": language,
-                    "lifestyles": ontology_data.get("lifestyles", []),
-                    "metadata": {
-                        "description": "AI-generated ontology from product catalog",
-                        "n_lifestyles": len(dim_lifestyle_df),
-                        "n_intents": len(dim_intent_df),
-                        "chunking_method": "category_stratified_interleaving_round_robin",
-                        "chunk_size": int(chunk_size),
-                        "product_slice_chars": int(product_slice_chars),
-                        "seed": int(chunk_seed),
+                    ontology = {
+                        "name": "AI-Generated Product Ontology",
+                        "version": "v1",
+                        "created_at": pd.Timestamp.now().isoformat(),
+                        "total_products": len(catalog_df),
+                        "model": "gemini-2.5-flash",
+                        "language": language,
+                        "lifestyles": ontology_data.get("lifestyles", []),
+                        "metadata": {
+                            "description": "AI-generated ontology from product catalog",
+                            "n_lifestyles": len(dim_lifestyle_df),
+                            "n_intents": len(dim_intent_df),
+                            "chunking_method": "Category-Stratified Interleaving (CSI)",
+                            "chunk_size": int(chunk_size),
+                            "product_slice_chars": int(product_slice_chars),
+                            "seed": int(chunk_seed),
+                        }
                     }
-                }
 
-                st.session_state["ontology"] = ontology
-                st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
-                st.session_state["dim_intent_df"] = dim_intent_df
+                    st.session_state["ontology"] = ontology
+                    st.session_state["dim_lifestyle_df"] = dim_lifestyle_df
+                    st.session_state["dim_intent_df"] = dim_intent_df
 
-                st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
+                    st.success(f"✅ Generated {len(dim_lifestyle_df)} lifestyles and {len(dim_intent_df)} intents!")
 
-        except ImportError:
-            st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
-        except Exception as e:
-            st.error(f"❌ Error generating ontology: {str(e)}")
-            st.exception(e)
+            except ImportError:
+                st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
+            except Exception as e:
+                st.error(f"❌ Error generating ontology: {str(e)}")
+                st.exception(e)
 
     # -------------------------
     # Display & Downloads (works for both generated or uploaded ontology)
@@ -1189,7 +1270,6 @@ Return STRICT minified JSON:
 else:
     st.info("👆 Upload Product CSV in Step 1 to enable ontology generation or reuse.")
 
-
 # ============================================================================
 # STEP 3: CAMPAIGN → WEIGHTED INTENT PROFILE (LLM)  +  (UPLOAD TO REUSE)
 # ============================================================================
@@ -1202,6 +1282,11 @@ if "campaigns_df" not in st.session_state:
     st.stop()
 
 campaigns_df = st.session_state["campaigns_df"].copy()
+
+# Small helper (avoid dependency if you didn’t define it elsewhere)
+def chunk_df(df: pd.DataFrame, size: int):
+    for start in range(0, len(df), int(size)):
+        yield df.iloc[start : start + int(size)]
 
 # -------------------------
 # Option B: Upload to reuse
@@ -1299,7 +1384,7 @@ with st.expander("Upload campaign_intent_profile.csv to reuse (recommended for d
 
                     st.success(f"✅ Loaded uploaded campaign intent profile: {len(df_up):,} rows")
 
-                    with st.expander("Preview uploaded profile (first 200 rows)"):
+                    with st.expander("Preview uploaded profile (first 200 rows)", expanded=False):
                         st.dataframe(df_up.head(200), use_container_width=True)
 
             except Exception as e:
@@ -1316,6 +1401,15 @@ if "ontology" not in st.session_state or "dim_intent_df" not in st.session_state
     st.info("👆 To generate profiles with AI, please generate/upload ontology in Step 2 first. (Upload reuse above still works.)")
 else:
     dim_intent_df = st.session_state["dim_intent_df"].copy()
+
+    # ✅ Auto-hide default, only what you asked: avg chars per campaign + # campaigns
+    with st.expander("📏 Campaign Size Advisor (Step 3)", expanded=False):
+        briefs = campaigns_df["campaign_brief"].fillna("").astype(str)
+        avg_chars_per_campaign = float(briefs.str.len().mean()) if len(briefs) else 0.0
+        n_campaigns = int(len(campaigns_df))
+        c1, c2 = st.columns(2)
+        c1.metric("Avg characters / campaign brief", f"{avg_chars_per_campaign:,.0f}")
+        c2.metric("# campaigns", f"{n_campaigns:,}")
 
     st.write("**🔑 API Configuration**")
     gemini_api_key = None
@@ -1339,16 +1433,17 @@ else:
         top_n = st.number_input("Top intents per campaign", min_value=3, max_value=12, value=6, key="step3_top_n")
         output_language = st.selectbox("Output Language", ["en", "th"], index=0, key="step3_output_language")
         include_lifestyle_context = st.checkbox("Include lifestyle context in prompt", value=True, key="step3_include_lifestyle")
+
+        # ✅ parameter you requested
         intent_snippet_max_chars = st.number_input(
             "Intent list max chars in prompt (intent_snippet_max_chars)",
             min_value=2000,
             max_value=120000,
             value=16000,
             step=1000,
-            help="This caps how many intents are included in the prompt. Too small = missing intents. Too large = bigger token cost."
+            help="Caps how many intents go into the prompt. Smaller = cheaper but may miss some intents."
         )
 
-    
     with right:
         st.write("**Rate-limit settings (avoid 429)**")
         model_name = st.text_input("Model name", value="gemini-2.5-flash", key="step3_model_name")
@@ -1373,7 +1468,8 @@ else:
             "lifestyle_id": str(r.get("lifestyle_id", "")).strip(),
         })
 
-    intent_snippet = safe_json_snippet(intent_candidates, max_chars=16000)
+    # ✅ use your parameter here (not hard-coded)
+    intent_snippet = safe_json_snippet(intent_candidates, max_chars=int(intent_snippet_max_chars))
 
     def normalize_weights(items):
         w = [float(x.get("weight", 0)) for x in items]
@@ -1553,168 +1649,6 @@ if st.session_state.get("campaign_intent_profiles_json") is not None:
         mime="application/json",
         use_container_width=True
     )
-# =========================
-#  Campaign Batch Size Advisor (NO API)  ✅ auto-hide by default
-# - Estimates avg characters/tokens per campaign in your batch
-# - Shows how batch_size + intent_snippet_max_chars affect prompt size per call
-# =========================
-with st.expander("📏 Batch Size Advisor (Step 3: Campaign → Intent Profile)", expanded=False):
-
-    adv_l, adv_r = st.columns([1, 1])
-
-    with adv_l:
-        st.markdown("#### Inputs (simple)")
-
-        # Use the same estimator style as Step 2
-        est_mode_3 = st.radio(
-            "Estimator mode",
-            ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
-            index=1,
-            horizontal=True,
-            key="step3_token_est_mode"
-        )
-        mode_key_3 = "bytes" if str(est_mode_3).startswith("bytes") else "chars"
-
-        chars_per_token_3 = st.slider(
-            "Chars-per-token factor (lower = more tokens)",
-            min_value=2.0, max_value=6.0, value=4.0, step=0.5,
-            key="step3_chars_per_token"
-        )
-
-        token_budget_3 = st.select_slider(
-            "Per-call token budget (estimate)",
-            options=[4000, 6000, 8000, 12000, 16000, 20000],
-            value=12000,
-            key="step3_token_budget"
-        )
-
-        # ✅ NEW: Make intent_snippet max chars configurable
-        intent_snippet_max_chars = st.number_input(
-            "Intent list max characters per call (intent_snippet_max_chars)",
-            min_value=2000, max_value=80000, value=16000, step=1000,
-            key="step3_intent_snippet_max_chars"
-        )
-
-        # Current batch_size control already exists in your UI (right column),
-        # but we show it here for clarity (read-only display).
-        st.caption(f"Current batch_size = **{int(batch_size)}** campaigns / call")
-
-        safety_mult_3 = st.slider(
-            "Safety multiplier (variance + output allowance)",
-            min_value=1.0, max_value=2.0, value=1.25, step=0.05,
-            key="step3_safety_mult"
-        )
-
-    with adv_r:
-        st.markdown("#### Executive KPIs")
-
-        # --- Average campaign size ---
-        # (A) Just the brief text
-        briefs = campaigns_df["campaign_brief"].fillna("").astype(str)
-        avg_chars_brief = float(briefs.str.len().mean()) if len(briefs) else 0.0
-
-        # (B) The JSON object you actually send per campaign in prompt
-        #     {"campaign_id","campaign_name","campaign_brief"} as JSON
-        #     (This is closer to reality than brief-only)
-        sample_objs = []
-        for _, r in campaigns_df.head(200).iterrows():  # limit for speed
-            sample_objs.append({
-                "campaign_id": str(r.get("campaign_id", "")),
-                "campaign_name": str(r.get("campaign_name", "")),
-                "campaign_brief": str(r.get("campaign_brief", "")),
-            })
-        if sample_objs:
-            avg_chars_campaign_obj = float(sum(len(json.dumps(o, ensure_ascii=False)) for o in sample_objs) / len(sample_objs))
-        else:
-            avg_chars_campaign_obj = 0.0
-
-        # --- Token estimates ---
-        avg_tokens_per_campaign = approx_tokens_from_text(
-            "X" * int(avg_chars_campaign_obj),
-            mode=mode_key_3,
-            chars_per_token=chars_per_token_3
-        )
-
-        # Intent snippet tokens (capped by your parameter)
-        intent_tokens = approx_tokens_from_text(
-            "X" * int(intent_snippet_max_chars),
-            mode=mode_key_3,
-            chars_per_token=chars_per_token_3
-        )
-
-        # Prompt overhead tokens (instructions + schema)
-        # Keep it simple: fixed overhead estimate string
-        step3_overhead_text = (
-            "You are a marketing analyst. Map EACH campaign brief into a weighted intent profile. "
-            "You MUST choose intents ONLY from this intent list. Input campaigns (JSON). "
-            "Task: select top intents + rationale + weight. Return JSON only."
-        )
-        overhead_tokens_3 = approx_tokens_from_text(
-            step3_overhead_text,
-            mode=mode_key_3,
-            chars_per_token=chars_per_token_3
-        )
-
-        # Optional lifestyle_note (rough estimate)
-        lifestyle_note_tokens_3 = 0.0
-        if include_lifestyle_context:
-            lifestyle_note_tokens_3 = approx_tokens_from_text(
-                "Lifestyle context (high-level): " + ("X" * 200),
-                mode=mode_key_3,
-                chars_per_token=chars_per_token_3
-            )
-
-        bs = int(batch_size)
-        est_tokens_per_call_3 = float(
-            overhead_tokens_3
-            + intent_tokens
-            + lifestyle_note_tokens_3
-            + (avg_tokens_per_campaign * bs)
-        )
-
-        total_campaigns = int(len(campaigns_df))
-        est_calls_3 = int((total_campaigns + bs - 1) // bs)
-
-        # Recommend a safe batch_size under token budget
-        # Solve: overhead + intent + lifestyle + avg_campaign*bs <= budget
-        fixed_3 = float(overhead_tokens_3 + intent_tokens + lifestyle_note_tokens_3)
-        if avg_tokens_per_campaign <= 0:
-            reco_bs = 1
-        else:
-            reco_bs = int((float(token_budget_3) - fixed_3) / float(avg_tokens_per_campaign))
-            reco_bs = max(1, min(reco_bs, 20))  # keep sane; you already cap UI at 10
-
-        # "All-in" tokens (safety multiplier)
-        est_total_tokens_allin_3 = float(est_tokens_per_call_3 * est_calls_3 * float(safety_mult_3))
-
-        k1, k2 = st.columns(2)
-        with k1:
-            st.metric("Avg chars / brief", f"{avg_chars_brief:,.0f}")
-        with k2:
-            st.metric("Avg chars / campaign JSON", f"{avg_chars_campaign_obj:,.0f}")
-
-        k3, k4 = st.columns(2)
-        with k3:
-            st.metric("Avg tokens / campaign", f"{avg_tokens_per_campaign:,.0f}")
-        with k4:
-            st.metric("Intent list cap (chars)", f"{int(intent_snippet_max_chars):,}")
-
-        k5, k6 = st.columns(2)
-        with k5:
-            st.metric("Est tokens / call", f"{est_tokens_per_call_3:,.0f}")
-        with k6:
-            st.metric("Est #calls", f"{est_calls_3:,}")
-
-        k7, k8 = st.columns(2)
-        with k7:
-            st.metric("Recommended batch_size", f"{reco_bs} (under {int(token_budget_3):,} tokens)")
-        with k8:
-            st.metric("Est total tokens (all-in)", f"{est_total_tokens_allin_3:,.0f}")
-
-        st.caption(
-            "This is a rough sizing tool (no API calls). "
-            "It estimates prompt size using (intent list cap + campaign JSON + fixed overhead)."
-        )
 
 
 # NOTE TO STEP 4:
