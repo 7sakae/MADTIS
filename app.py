@@ -1663,6 +1663,169 @@ if st.session_state.get("campaign_intent_profiles_json") is not None:
         mime="application/json",
         use_container_width=True
     )
+# =========================
+#  Campaign Batch Size Advisor (NO API)  ✅ auto-hide by default
+# - Estimates avg characters/tokens per campaign in your batch
+# - Shows how batch_size + intent_snippet_max_chars affect prompt size per call
+# =========================
+with st.expander("📏 Batch Size Advisor (Step 3: Campaign → Intent Profile)", expanded=False):
+
+    adv_l, adv_r = st.columns([1, 1])
+
+    with adv_l:
+        st.markdown("#### Inputs (simple)")
+
+        # Use the same estimator style as Step 2
+        est_mode_3 = st.radio(
+            "Estimator mode",
+            ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
+            index=1,
+            horizontal=True,
+            key="step3_token_est_mode"
+        )
+        mode_key_3 = "bytes" if str(est_mode_3).startswith("bytes") else "chars"
+
+        chars_per_token_3 = st.slider(
+            "Chars-per-token factor (lower = more tokens)",
+            min_value=2.0, max_value=6.0, value=4.0, step=0.5,
+            key="step3_chars_per_token"
+        )
+
+        token_budget_3 = st.select_slider(
+            "Per-call token budget (estimate)",
+            options=[4000, 6000, 8000, 12000, 16000, 20000],
+            value=12000,
+            key="step3_token_budget"
+        )
+
+        # ✅ NEW: Make intent_snippet max chars configurable
+        intent_snippet_max_chars = st.number_input(
+            "Intent list max characters per call (intent_snippet_max_chars)",
+            min_value=2000, max_value=80000, value=16000, step=1000,
+            key="step3_intent_snippet_max_chars"
+        )
+
+        # Current batch_size control already exists in your UI (right column),
+        # but we show it here for clarity (read-only display).
+        st.caption(f"Current batch_size = **{int(batch_size)}** campaigns / call")
+
+        safety_mult_3 = st.slider(
+            "Safety multiplier (variance + output allowance)",
+            min_value=1.0, max_value=2.0, value=1.25, step=0.05,
+            key="step3_safety_mult"
+        )
+
+    with adv_r:
+        st.markdown("#### Executive KPIs")
+
+        # --- Average campaign size ---
+        # (A) Just the brief text
+        briefs = campaigns_df["campaign_brief"].fillna("").astype(str)
+        avg_chars_brief = float(briefs.str.len().mean()) if len(briefs) else 0.0
+
+        # (B) The JSON object you actually send per campaign in prompt
+        #     {"campaign_id","campaign_name","campaign_brief"} as JSON
+        #     (This is closer to reality than brief-only)
+        sample_objs = []
+        for _, r in campaigns_df.head(200).iterrows():  # limit for speed
+            sample_objs.append({
+                "campaign_id": str(r.get("campaign_id", "")),
+                "campaign_name": str(r.get("campaign_name", "")),
+                "campaign_brief": str(r.get("campaign_brief", "")),
+            })
+        if sample_objs:
+            avg_chars_campaign_obj = float(sum(len(json.dumps(o, ensure_ascii=False)) for o in sample_objs) / len(sample_objs))
+        else:
+            avg_chars_campaign_obj = 0.0
+
+        # --- Token estimates ---
+        avg_tokens_per_campaign = approx_tokens_from_text(
+            "X" * int(avg_chars_campaign_obj),
+            mode=mode_key_3,
+            chars_per_token=chars_per_token_3
+        )
+
+        # Intent snippet tokens (capped by your parameter)
+        intent_tokens = approx_tokens_from_text(
+            "X" * int(intent_snippet_max_chars),
+            mode=mode_key_3,
+            chars_per_token=chars_per_token_3
+        )
+
+        # Prompt overhead tokens (instructions + schema)
+        # Keep it simple: fixed overhead estimate string
+        step3_overhead_text = (
+            "You are a marketing analyst. Map EACH campaign brief into a weighted intent profile. "
+            "You MUST choose intents ONLY from this intent list. Input campaigns (JSON). "
+            "Task: select top intents + rationale + weight. Return JSON only."
+        )
+        overhead_tokens_3 = approx_tokens_from_text(
+            step3_overhead_text,
+            mode=mode_key_3,
+            chars_per_token=chars_per_token_3
+        )
+
+        # Optional lifestyle_note (rough estimate)
+        lifestyle_note_tokens_3 = 0.0
+        if include_lifestyle_context:
+            lifestyle_note_tokens_3 = approx_tokens_from_text(
+                "Lifestyle context (high-level): " + ("X" * 200),
+                mode=mode_key_3,
+                chars_per_token=chars_per_token_3
+            )
+
+        bs = int(batch_size)
+        est_tokens_per_call_3 = float(
+            overhead_tokens_3
+            + intent_tokens
+            + lifestyle_note_tokens_3
+            + (avg_tokens_per_campaign * bs)
+        )
+
+        total_campaigns = int(len(campaigns_df))
+        est_calls_3 = int((total_campaigns + bs - 1) // bs)
+
+        # Recommend a safe batch_size under token budget
+        # Solve: overhead + intent + lifestyle + avg_campaign*bs <= budget
+        fixed_3 = float(overhead_tokens_3 + intent_tokens + lifestyle_note_tokens_3)
+        if avg_tokens_per_campaign <= 0:
+            reco_bs = 1
+        else:
+            reco_bs = int((float(token_budget_3) - fixed_3) / float(avg_tokens_per_campaign))
+            reco_bs = max(1, min(reco_bs, 20))  # keep sane; you already cap UI at 10
+
+        # "All-in" tokens (safety multiplier)
+        est_total_tokens_allin_3 = float(est_tokens_per_call_3 * est_calls_3 * float(safety_mult_3))
+
+        k1, k2 = st.columns(2)
+        with k1:
+            st.metric("Avg chars / brief", f"{avg_chars_brief:,.0f}")
+        with k2:
+            st.metric("Avg chars / campaign JSON", f"{avg_chars_campaign_obj:,.0f}")
+
+        k3, k4 = st.columns(2)
+        with k3:
+            st.metric("Avg tokens / campaign", f"{avg_tokens_per_campaign:,.0f}")
+        with k4:
+            st.metric("Intent list cap (chars)", f"{int(intent_snippet_max_chars):,}")
+
+        k5, k6 = st.columns(2)
+        with k5:
+            st.metric("Est tokens / call", f"{est_tokens_per_call_3:,.0f}")
+        with k6:
+            st.metric("Est #calls", f"{est_calls_3:,}")
+
+        k7, k8 = st.columns(2)
+        with k7:
+            st.metric("Recommended batch_size", f"{reco_bs} (under {int(token_budget_3):,} tokens)")
+        with k8:
+            st.metric("Est total tokens (all-in)", f"{est_total_tokens_allin_3:,.0f}")
+
+        st.caption(
+            "This is a rough sizing tool (no API calls). "
+            "It estimates prompt size using (intent list cap + campaign JSON + fixed overhead)."
+        )
+
 
 # NOTE TO STEP 4:
 # Step 4 does not need to match campaign → intents.
