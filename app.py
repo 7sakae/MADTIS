@@ -947,127 +947,17 @@ with col1:
 # Chunk Size Advisor (EXECUTIVE, NO API) — 2 columns wide
 # NOTE: product_slice_chars is defined in the upper section already.
 # =========================
-with st.expander("📏 Chunk Size Advisor (Executive view)", expanded=False):
+with st.expander("📏 Campaign Size Advisor (Step 3)", expanded=False):
+    # Avg characters per campaign_brief
+    briefs = campaigns_df["campaign_brief"].fillna("").astype(str)
+    avg_chars_per_campaign = float(briefs.str.len().mean()) if len(briefs) else 0.0
 
-    # Make this section 2 columns wide
-    adv_left, adv_right = st.columns([1, 1])
+    # Total campaigns
+    n_campaigns = int(len(campaigns_df))
 
-    # -------------------------
-    # LEFT: Inputs (simple)
-    # -------------------------
-    with adv_left:
-        st.markdown("#### Inputs")
-
-        est_mode = st.radio(
-            "Estimator mode",
-            ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
-            index=1,
-            horizontal=True,
-            key="step2_token_est_mode_exec"
-        )
-
-        chars_per_token = st.slider(
-            "Chars-per-token factor (lower = more tokens)",
-            min_value=2.0,
-            max_value=6.0,
-            value=4.0,
-            step=0.5,
-            key="step2_chars_per_token_exec"
-        )
-
-        token_budget = st.select_slider(
-            "Per-call token budget (estimate)",
-            options=[6000, 8000, 12000, 16000, 20000],
-            value=12000,
-            key="step2_token_budget_exec"
-        )
-
-        # Cost inputs
-        st.markdown("#### Cost inputs (simple)")
-        tokens_per_dollar = st.number_input(
-            "Tokens per $1 (your pricing assumption)",
-            min_value=1000.0,
-            max_value=5_000_000.0,
-            value=250_000.0,
-            step=10_000.0,
-            key="step2_tokens_per_dollar_exec"
-        )
-
-        safety_multiplier = st.slider(
-            "Safety multiplier (output + variance)",
-            min_value=1.0,
-            max_value=2.0,
-            value=1.3,
-            step=0.05,
-            key="step2_safety_mult_exec"
-        )
-
-    # -------------------------
-    # RIGHT: Outputs (executive KPIs)
-    # -------------------------
-    with adv_right:
-        st.markdown("#### Executive KPIs")
-
-        mode_key = "bytes" if str(est_mode).startswith("bytes") else "chars"
-
-        # Use product_slice_chars from the upper settings (default 240 there)
-        # Mirrors your actual prompt examples (t[:product_slice_chars])
-        sent_series = (
-            catalog_df["product_text"]
-            .fillna("")
-            .astype(str)
-            .str.slice(0, int(product_slice_chars))
-        )
-
-        avg_tokens_per_product = sent_series.apply(
-            lambda s: approx_tokens_from_text(s, mode=mode_key, chars_per_token=chars_per_token)
-        ).mean()
-
-        overhead_prompt = build_step2_overhead_prompt(language)
-        overhead_tokens = approx_tokens_from_text(
-            overhead_prompt,
-            mode=mode_key,
-            chars_per_token=chars_per_token
-        )
-
-        # Current chunk_size comes from the main control outside
-        cs = int(chunk_size)
-        n_products = int(len(catalog_df))
-
-        est_tokens_per_call = float(overhead_tokens + avg_tokens_per_product * cs)
-        est_calls = int((n_products + cs - 1) // cs)
-
-        # Reco chunk size under budget
-        reco = int((float(token_budget) - float(overhead_tokens)) / max(float(avg_tokens_per_product), 1.0))
-        reco = max(5, min(reco, 100))
-
-        # Total cost estimate (prompt + output allowance)
-        est_total_tokens_prompt = est_tokens_per_call * est_calls
-        est_total_tokens_allin = est_total_tokens_prompt * float(safety_multiplier)
-        est_cost = est_total_tokens_allin / max(float(tokens_per_dollar), 1.0)
-
-        k1, k2 = st.columns(2)
-        with k1:
-            st.metric("Avg tokens / product", f"{avg_tokens_per_product:,.1f}")
-        with k2:
-            st.metric("Fixed overhead / call", f"{overhead_tokens:,.0f}")
-
-        k3, k4 = st.columns(2)
-        with k3:
-            st.metric("Est tokens / call", f"{est_tokens_per_call:,.0f}")
-        with k4:
-            st.metric("Est #calls", f"{est_calls:,}")
-
-        k5, k6 = st.columns(2)
-        with k5:
-            st.metric("Recommended chunk size", f"{reco} (under {int(token_budget):,} tokens)")
-        with k6:
-            st.metric("Est total cost ($)", f"{est_cost:,.2f}")
-
-        st.caption(
-            "Notes: This is a rough estimate (no API calls). "
-            "Cost uses your assumed Tokens per $1 and a safety multiplier for output/variance."
-        )
+    c1, c2 = st.columns(2)
+    c1.metric("Avg characters / campaign brief", f"{avg_chars_per_campaign:,.0f}")
+    c2.metric("# campaigns", f"{n_campaigns:,}")
 
 
 
