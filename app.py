@@ -511,84 +511,124 @@ if "catalog_df" in st.session_state and "txn_df" in st.session_state:
 
     st.header("📊 Data Summary")
 
-    tab1, tab2, tab3 = st.tabs(["📦 Products", "🛒 Transactions", "📈 Analytics"])
+# add Category tab as FIRST
+tab0, tab1, tab2, tab3 = st.tabs(["🗂️ Categories", "📦 Products", "🛒 Transactions", "📈 Analytics"])
 
-    with tab1:
-        st.subheader("Product Catalog")
+with tab0:
+    st.subheader("Category Overview")
+
+    # try to auto-detect a category column
+    candidate_cols = ["category", "category_name", "cat", "cat_name", "department", "dept", "product_category"]
+    cat_col = next((c for c in candidate_cols if c in catalog_df.columns), None)
+
+    if not cat_col:
+        st.info("No category column found in product catalog. Add a column like `category` or `category_name` to enable this view.")
+    else:
+        # distinct products per category
+        cat_summary = (
+            catalog_df.groupby(cat_col)["product_id"]
+            .nunique()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={cat_col: "Category", "product_id": "Distinct Products"})
+        )
+        total_distinct = int(catalog_df["product_id"].nunique())
+        cat_summary["Share"] = (cat_summary["Distinct Products"] / max(total_distinct, 1)).map(lambda x: f"{x*100:.1f}%")
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Total Products", f"{len(catalog_df):,}")
+            st.metric("Category Column", cat_col)
         with c2:
-            st.metric("Unique Product IDs", f"{catalog_df['product_id'].nunique():,}")
+            st.metric("Total Categories", f"{cat_summary['Category'].nunique():,}")
         with c3:
-            st.metric("Columns", len(catalog_df.columns))
+            st.metric("Total Distinct Products", f"{total_distinct:,}")
 
-        st.dataframe(catalog_df, use_container_width=True, height=400)
+        st.dataframe(cat_summary, use_container_width=True, height=420)
+
         st.download_button(
-            "📥 Download Processed Product Data",
-            data=catalog_df.to_csv(index=False).encode("utf-8"),
-            file_name="catalog_processed.csv",
+            "📥 Download Category Summary",
+            data=cat_summary.to_csv(index=False).encode("utf-8"),
+            file_name="category_overview.csv",
             mime="text/csv"
         )
 
-    with tab2:
-        st.subheader("Transaction History")
+with tab1:
+    st.subheader("Product Catalog")
 
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Total Transactions", f"{len(txn_df):,}")
-        with c2:
-            st.metric("Unique Customers", f"{txn_df['customer_id'].nunique():,}")
-        with c3:
-            st.metric("Total Revenue", f"${txn_df['amt'].sum():,.2f}")
-        with c4:
-            st.metric("Avg Transaction", f"${txn_df['amt'].mean():.2f}")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Total Products", f"{len(catalog_df):,}")
+    with c2:
+        st.metric("Unique Product IDs", f"{catalog_df['product_id'].nunique():,}")
+    with c3:
+        st.metric("Columns", len(catalog_df.columns))
 
-        st.dataframe(txn_df, use_container_width=True, height=400)
-        st.download_button(
-            "📥 Download Processed Transaction Data",
-            data=txn_df.to_csv(index=False).encode("utf-8"),
-            file_name="transactions_processed.csv",
-            mime="text/csv"
-        )
+    st.dataframe(catalog_df, use_container_width=True, height=400)
+    st.download_button(
+        "📥 Download Processed Product Data",
+        data=catalog_df.to_csv(index=False).encode("utf-8"),
+        file_name="catalog_processed.csv",
+        mime="text/csv"
+    )
 
-    with tab3:
-        st.subheader("Quick Analytics")
+with tab2:
+    st.subheader("Transaction History")
 
-        st.write("**Top 10 Customers by Revenue**")
-        top_customers = (
-            txn_df.groupby("customer_id")["amt"]
-            .sum()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-        )
-        top_customers.columns = ["Customer ID", "Total Spent"]
-        st.dataframe(top_customers, use_container_width=True)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total Transactions", f"{len(txn_df):,}")
+    with c2:
+        st.metric("Unique Customers", f"{txn_df['customer_id'].nunique():,}")
+    with c3:
+        st.metric("Total Revenue", f"${txn_df['amt'].sum():,.2f}")
+    with c4:
+        st.metric("Avg Transaction", f"${txn_df['amt'].mean():.2f}")
 
-        st.write("**Top 10 Products by Transaction Count**")
-        top_products = (
-            txn_df.groupby("product_id")
-            .size()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index(name="transaction_count")
-        )
+    st.dataframe(txn_df, use_container_width=True, height=400)
+    st.download_button(
+        "📥 Download Processed Transaction Data",
+        data=txn_df.to_csv(index=False).encode("utf-8"),
+        file_name="transactions_processed.csv",
+        mime="text/csv"
+    )
 
-        top_products = top_products.merge(
-            catalog_df[["product_id", "product_name"]],
-            on="product_id",
-            how="left"
-        )
+with tab3:
+    st.subheader("Quick Analytics")
 
-        top_products = top_products.rename(columns={
-            "product_id": "Product ID",
-            "product_name": "Product Name",
-            "transaction_count": "Transaction Count"
-        })
+    st.write("**Top 10 Customers by Revenue**")
+    top_customers = (
+        txn_df.groupby("customer_id")["amt"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index()
+    )
+    top_customers.columns = ["Customer ID", "Total Spent"]
+    st.dataframe(top_customers, use_container_width=True)
 
-        st.dataframe(top_products[["Product ID", "Product Name", "Transaction Count"]], use_container_width=True)
+    st.write("**Top 10 Products by Transaction Count**")
+    top_products = (
+        txn_df.groupby("product_id")
+        .size()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index(name="transaction_count")
+    )
+
+    top_products = top_products.merge(
+        catalog_df[["product_id", "product_name"]],
+        on="product_id",
+        how="left"
+    )
+
+    top_products = top_products.rename(columns={
+        "product_id": "Product ID",
+        "product_name": "Product Name",
+        "transaction_count": "Transaction Count"
+    })
+
+    st.dataframe(top_products[["Product ID", "Product Name", "Transaction Count"]], use_container_width=True)
+
 
 else:
     st.info("👆 Upload both Product and Transaction CSV files to see the data summary.")
