@@ -453,7 +453,7 @@ with col1:
                     product_df["product_description"].fillna("").astype(str)
                 ).str.lower()
 
-                catalog_df = product_df[["product_id", "product_title", "product_text"]].copy()
+                catalog_df = product_df[["product_id", "product_title", "product_text","product_category"]].copy()
                 catalog_df = catalog_df.drop_duplicates(subset=["product_id"]).reset_index(drop=True)
                 catalog_df["product_name"] = catalog_df["product_title"]
 
