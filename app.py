@@ -741,7 +741,7 @@ if "catalog_df" in st.session_state:
         # =========================
         # Chunk Size Advisor (NO API)
         # =========================
-        with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=True):
+        with st.expander("📏 Chunk Size Advisor (estimate tokens per product)", expanded=False):
             est_mode = st.radio(
                 "Estimator mode",
                 ["chars (simple, good for EN)", "bytes (better for TH/mixed)"],
