@@ -2573,19 +2573,35 @@ st.divider()
 st.header("Step 6: Campaign Audience Builder")
 st.caption("Rank customers for a selected campaign using (campaign intent weights) × (customer intent profile).")
 
+# Prereqs
 if st.session_state.get("customer_intent_profile_df") is None:
     st.info("👆 Build customer profiles in Step 5 first.")
     st.stop()
 
+if "txn_df" not in st.session_state or st.session_state["txn_df"] is None:
+    st.info("👆 Upload Transaction CSV in Step 1 first.")
+    st.stop()
+
+txn_df = st.session_state["txn_df"].copy()
+txn_df.columns = txn_df.columns.str.strip().str.lower()
+
 df_ci = st.session_state["customer_intent_profile_df"].copy()
-df_ci["customer_id"] = df_ci["customer_id"].astype(str)
-df_ci["intent_id"] = df_ci["intent_id"].astype(str)
+df_ci.columns = df_ci.columns.str.strip().str.lower()
+df_ci["customer_id"] = df_ci["customer_id"].astype(str).str.strip()
+df_ci["intent_id"] = df_ci["intent_id"].astype(str).str.strip()
+if "intent_share" not in df_ci.columns:
+    df_ci["intent_share"] = 0.0
 df_ci["intent_share"] = pd.to_numeric(df_ci["intent_share"], errors="coerce").fillna(0.0)
 
-campaigns_df = st.session_state["campaigns_df"].copy()
-campaigns_df["campaign_id"] = campaigns_df["campaign_id"].astype(str)
+if "campaigns_df" not in st.session_state or st.session_state["campaigns_df"] is None or len(st.session_state["campaigns_df"]) == 0:
+    st.warning("No campaigns found. Upload/paste campaigns in Step 0 first.")
+    st.stop()
 
-# Choose campaign
+campaigns_df = st.session_state["campaigns_df"].copy()
+campaigns_df.columns = campaigns_df.columns.str.strip().str.lower()
+campaigns_df["campaign_id"] = campaigns_df["campaign_id"].astype(str).str.strip()
+
+# Choose campaign (safe + unique key)
 campaign_options = campaigns_df["campaign_id"].dropna().astype(str).str.strip().tolist()
 campaign_options = [c for c in campaign_options if c != ""]
 
@@ -2605,248 +2621,53 @@ campaign_id = st.selectbox(
     "Select campaign",
     options=campaign_options,
     format_func=_fmt_campaign,
-    key="step6_campaign_select_v2"  # ✅ unique key
+    key="step6_campaign_select_v2"  # ✅ must be unique
 )
 
-
-campaign_row = campaigns_df[campaigns_df["campaign_id"] == campaign_id].iloc[0]
-st.write(f"**Campaign brief:** {campaign_row['campaign_brief']}")
+campaign_row = campaigns_df[campaigns_df["campaign_id"].astype(str).str.strip() == str(campaign_id)].iloc[0]
+st.write(f"**Campaign brief:** {str(campaign_row.get('campaign_brief', '')).strip()}")
 
 # Decide weight source
 weight_source = st.radio(
     "Intent weight source",
     ["Use Step 3 campaign_intent_profile (if available)", "Manual: pick intents + weights"],
     horizontal=True,
-    key="step6_weight_source"
+    key="step6_weight_source_v2"
 )
 
 intent_weights = None
 
+# ---- Helper: attach intent_name (from dim_intent_df if possible) ----
+def _attach_intent_names(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "intent_name" not in out.columns:
+        out["intent_name"] = ""
+    if "dim_intent_df" in st.session_state and st.session_state["dim_intent_df"] is not None:
+        di = st.session_state["dim_intent_df"].copy()
+        di.columns = di.columns.str.strip().str.lower()
+        if "intent_id" in di.columns:
+            if "intent_name" not in di.columns:
+                di["intent_name"] = ""
+            di["intent_id"] = di["intent_id"].astype(str).str.strip()
+            di["intent_name"] = di["intent_name"].fillna("").astype(str).str.strip()
+            out["intent_id"] = out["intent_id"].astype(str).str.strip()
+            out = out.merge(di[["intent_id", "intent_name"]].drop_duplicates(), on="intent_id", how="left", suffixes=("", "_dim"))
+            # Prefer dim name if present
+            if "intent_name_dim" in out.columns:
+                out["intent_name"] = out["intent_name_dim"].fillna(out["intent_name"]).fillna("").astype(str).str.strip()
+                out.drop(columns=["intent_name_dim"], inplace=True)
+    out["intent_name"] = out["intent_name"].fillna("").astype(str).str.strip()
+    return out
+
+# ---- Weight source: Step 3 ----
 if weight_source.startswith("Use Step 3"):
     df_cp = st.session_state.get("campaign_intent_profile_df")
-    if df_cp is None:
+    if df_cp is None or len(df_cp) == 0:
         st.warning("No campaign_intent_profile found in Step 3. Switch to Manual mode or upload profile in Step 3.")
     else:
         df_cp = df_cp.copy()
         df_cp.columns = df_cp.columns.str.strip().str.lower()
-        if "campaign_id" not in df_cp.columns or "intent_id" not in df_cp.columns or "weight" not in df_cp.columns:
-            st.warning("campaign_intent_profile_df missing required columns. Switch to Manual mode.")
-        else:
-            w = df_cp[df_cp["campaign_id"].astype(str) == str(campaign_id)].copy()
-            if len(w) == 0:
-                st.warning("No intents found for this campaign in profile. Switch to Manual mode.")
-            else:
-                w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
-                s = w["weight"].sum()
-                if s <= 0:
-                    w["weight"] = 1.0 / max(len(w), 1)
-                else:
-                    w["weight"] = w["weight"] / s
-                intent_weights = w[["intent_id", "weight"]].copy()
 
-                with st.expander("Campaign intent weights (from Step 3)", expanded=False):
-                    show_cols = ["intent_id", "weight"]
-                    if "intent_name" in w.columns:
-                        show_cols = ["intent_id", "intent_name", "weight"]
-                    if "rationale" in w.columns:
-                        show_cols += ["rationale"]
-                    st.dataframe(w[show_cols].sort_values("weight", ascending=False), use_container_width=True)
-
-if intent_weights is None:
-    # Manual mode
-    if "dim_intent_df" in st.session_state:
-        dim_intent_df = st.session_state["dim_intent_df"].copy()
-        dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
-        intent_options = dim_intent_df[["intent_id", "intent_name"]].drop_duplicates()
-        intent_options["label"] = intent_options["intent_id"].astype(str) + " — " + intent_options["intent_name"].astype(str)
-        label_to_id = dict(zip(intent_options["label"], intent_options["intent_id"]))
-        labels = intent_options["label"].tolist()
-    else:
-        # fallback to what exists in customer profile
-        intent_ids = sorted(df_ci["intent_id"].unique().tolist())
-        labels = intent_ids
-        label_to_id = {x: x for x in intent_ids}
-
-    selected = st.multiselect("Pick intents for this campaign", options=labels, default=labels[:6], key="step6_manual_intents")
-    if len(selected) == 0:
-        st.warning("Pick at least 1 intent to rank customers.")
-        st.stop()
-
-    st.write("Set weights (they will be normalized to sum = 1):")
-    weights = []
-    cols = st.columns(min(3, len(selected)))
-    for idx, lab in enumerate(selected):
-        with cols[idx % len(cols)]:
-            w = st.number_input(f"Weight: {lab}", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key=f"step6_w_{idx}")
-            weights.append((label_to_id[lab], float(w)))
-
-    wdf = pd.DataFrame(weights, columns=["intent_id", "weight"])
-    s = wdf["weight"].sum()
-    if s <= 0:
-        wdf["weight"] = 1.0 / max(len(wdf), 1)
-    else:
-        wdf["weight"] = wdf["weight"] / s
-    intent_weights = wdf.copy()
-
-# Filters (minimal but useful)
-st.subheader("🔎 Optional Filters")
-f1, f2, f3 = st.columns(3)
-
-with f1:
-    min_txn_amt = st.number_input("Min total spend (amt) in history", min_value=0.0, value=0.0, step=10.0, key="step6_min_spend")
-with f2:
-    min_txn_count = st.number_input("Min transaction count", min_value=0, value=0, step=1, key="step6_min_txn_count")
-with f3:
-    recency_days = st.number_input("Recency window (days): last purchase within", min_value=0, value=0, step=10, key="step6_recency_days")
-
-rank_btn = st.button("🎯 Build Ranked Audience", type="primary", use_container_width=True, key="step6_rank_btn")
-
-if "campaign_audience_ranked_df" not in st.session_state:
-    st.session_state["campaign_audience_ranked_df"] = None
-
-if rank_btn:
-    try:
-        # Compute match score: sum_i customer_intent_share(i) * campaign_weight(i)
-        w = intent_weights.copy()
-        w["intent_id"] = w["intent_id"].astype(str)
-        w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
-
-        # join
-        j = df_ci.merge(w, on="intent_id", how="inner")
-        j["match_component"] = j["intent_share"] * j["weight"]
-
-        score = (
-            j.groupby("customer_id", as_index=False)["match_component"]
-            .sum()
-            .rename(columns={"match_component": "match_score"})
-        )
-
-        # Add a simple explanation: top contributing intents per customer
-        j = j.sort_values(["customer_id", "match_component"], ascending=[True, False])
-        j["comp_rank"] = j.groupby("customer_id").cumcount() + 1
-        top_comp = j[j["comp_rank"] <= 5].copy()
-
-        # Make a compact explanation string
-        def _mk_explain(g):
-            parts = []
-            for _, r in g.iterrows():
-                nm = str(r.get("intent_name", "")) if "intent_name" in g.columns else ""
-                if nm:
-                    parts.append(f"{r['intent_id']} ({nm}): {r['match_component']:.3f}")
-                else:
-                    parts.append(f"{r['intent_id']}: {r['match_component']:.3f}")
-            return " | ".join(parts)
-
-        explain = top_comp.groupby("customer_id").apply(_mk_explain).reset_index(name="top_contributors")
-
-        out = score.merge(explain, on="customer_id", how="left")
-
-        # Attach spend, count, recency from txn_df
-        tx = txn_df.copy()
-        tx["customer_id"] = tx["customer_id"].astype(str)
-        tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
-
-        agg = tx.groupby("customer_id").agg(
-            total_spend=("amt", "sum"),
-            txn_count=("tx_id", "count"),
-            last_tx_date=("tx_date", "max")
-        ).reset_index()
-
-        out = out.merge(agg, on="customer_id", how="left")
-
-        # Apply filters
-        if float(min_txn_amt) > 0:
-            out = out[out["total_spend"].fillna(0.0) >= float(min_txn_amt)]
-        if int(min_txn_count) > 0:
-            out = out[out["txn_count"].fillna(0) >= int(min_txn_count)]
-        if int(recency_days) > 0:
-            cutoff = pd.Timestamp.now() - pd.Timedelta(days=int(recency_days))
-            out = out[out["last_tx_date"].fillna(pd.Timestamp("1900-01-01")) >= cutoff]
-
-        out = out.sort_values("match_score", ascending=False).reset_index(drop=True)
-        out["rank"] = out.index + 1
-        out["campaign_id"] = str(campaign_id)
-        out["campaign_name"] = str(campaign_row["campaign_name"])
-        out["built_at"] = pd.Timestamp.now().isoformat()
-
-        st.session_state["campaign_audience_ranked_df"] = out
-
-        st.success(f"✅ Ranked audience built: {len(out):,} customers")
-
-    except Exception as e:
-        st.error(f"❌ Failed to build ranked audience: {e}")
-        st.exception(e)
-
-if st.session_state.get("campaign_audience_ranked_df") is not None:
-    st.subheader("🏆 Ranked Audience (Preview)")
-    aud = st.session_state["campaign_audience_ranked_df"]
-    st.dataframe(aud.head(500), use_container_width=True, height=420)
-
-    st.download_button(
-        "📥 Download campaign_audience_ranked.csv",
-        data=aud.to_csv(index=False).encode("utf-8"),
-        file_name=f"campaign_audience_ranked_{campaign_id}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
-# ============================================================================
-# STEP 6: CAMPAIGN AUDIENCE BUILDER (MATCH CAMPAIGN → CUSTOMERS)
-# ============================================================================
-st.divider()
-st.header("Step 6: Campaign Audience Builder")
-st.caption("Rank customers for a selected campaign using (campaign intent weights) × (customer intent profile).")
-
-if st.session_state.get("customer_intent_profile_df") is None:
-    st.info("👆 Build customer profiles in Step 5 first.")
-    st.stop()
-
-# Pull txn_df for filters (Step 1 prerequisite)
-if "txn_df" not in st.session_state:
-    st.info("👆 Upload Transaction CSV in Step 1 first.")
-    st.stop()
-
-txn_df = st.session_state["txn_df"].copy()
-
-df_ci = st.session_state["customer_intent_profile_df"].copy()
-df_ci.columns = df_ci.columns.str.strip().str.lower()
-df_ci["customer_id"] = df_ci["customer_id"].astype(str).str.strip()
-df_ci["intent_id"] = df_ci["intent_id"].astype(str).str.strip()
-if "intent_share" not in df_ci.columns:
-    df_ci["intent_share"] = 0.0
-df_ci["intent_share"] = pd.to_numeric(df_ci["intent_share"], errors="coerce").fillna(0.0)
-
-campaigns_df = st.session_state["campaigns_df"].copy()
-campaigns_df.columns = campaigns_df.columns.str.strip().str.lower()
-campaigns_df["campaign_id"] = campaigns_df["campaign_id"].astype(str).str.strip()
-
-# Choose campaign
-campaign_id = st.selectbox(
-    "Select campaign",
-    options=campaigns_df["campaign_id"].tolist(),
-    format_func=lambda cid: f"{cid} — {campaigns_df.loc[campaigns_df['campaign_id'] == cid, 'campaign_name'].iloc[0]}",
-    key="step6_campaign_select"
-)
-
-campaign_row = campaigns_df[campaigns_df["campaign_id"] == campaign_id].iloc[0]
-st.write(f"**Campaign brief:** {campaign_row['campaign_brief']}")
-
-# Decide weight source
-weight_source = st.radio(
-    "Intent weight source",
-    ["Use Step 3 campaign_intent_profile (if available)", "Manual: pick intents + weights"],
-    horizontal=True,
-    key="step6_weight_source"
-)
-
-intent_weights = None
-
-if weight_source.startswith("Use Step 3"):
-    df_cp = st.session_state.get("campaign_intent_profile_df")
-    if df_cp is None:
-        st.warning("No campaign_intent_profile found in Step 3. Switch to Manual mode or upload profile in Step 3.")
-    else:
-        df_cp = df_cp.copy()
-        df_cp.columns = df_cp.columns.str.strip().str.lower()
         if "campaign_id" not in df_cp.columns or "intent_id" not in df_cp.columns or "weight" not in df_cp.columns:
             st.warning("campaign_intent_profile_df missing required columns. Switch to Manual mode.")
         else:
@@ -2856,29 +2677,34 @@ if weight_source.startswith("Use Step 3"):
             else:
                 w["intent_id"] = w["intent_id"].astype(str).str.strip()
                 w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
+
+                # Normalize
                 s = w["weight"].sum()
                 if s <= 0:
                     w["weight"] = 1.0 / max(len(w), 1)
                 else:
                     w["weight"] = w["weight"] / s
-                intent_weights = w[["intent_id", "weight"]].copy()
+
+                # Attach intent names for nicer display + explanations
+                w = _attach_intent_names(w)
+
+                intent_weights = w[["intent_id", "weight", "intent_name"]].copy()
 
                 with st.expander("Campaign intent weights (from Step 3)", expanded=False):
-                    show_cols = ["intent_id", "weight"]
-                    if "intent_name" in w.columns:
-                        show_cols = ["intent_id", "intent_name", "weight"]
+                    show_cols = ["intent_id", "intent_name", "weight"]
                     if "rationale" in w.columns:
                         show_cols += ["rationale"]
                     st.dataframe(w[show_cols].sort_values("weight", ascending=False), use_container_width=True)
 
+# ---- Weight source: Manual ----
 if intent_weights is None:
-    # Manual mode
     if "dim_intent_df" in st.session_state and st.session_state["dim_intent_df"] is not None:
         dim_intent_df = st.session_state["dim_intent_df"].copy()
         dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
 
         if "intent_name" not in dim_intent_df.columns:
             dim_intent_df["intent_name"] = ""
+
         dim_intent_df["intent_id"] = dim_intent_df["intent_id"].astype(str).str.strip()
         dim_intent_df["intent_name"] = dim_intent_df["intent_name"].fillna("").astype(str).str.strip()
 
@@ -2887,7 +2713,6 @@ if intent_weights is None:
         label_to_id = dict(zip(intent_options["label"], intent_options["intent_id"]))
         labels = intent_options["label"].tolist()
     else:
-        # fallback to what exists in customer profile
         intent_ids = sorted(df_ci["intent_id"].unique().tolist())
         labels = intent_ids
         label_to_id = {x: x for x in intent_ids}
@@ -2896,7 +2721,7 @@ if intent_weights is None:
         "Pick intents for this campaign",
         options=labels,
         default=labels[:6],
-        key="step6_manual_intents"
+        key="step6_manual_intents_v2"
     )
     if len(selected) == 0:
         st.warning("Pick at least 1 intent to rank customers.")
@@ -2911,7 +2736,7 @@ if intent_weights is None:
                 f"Weight: {lab}",
                 min_value=0.0, max_value=10.0,
                 value=1.0, step=0.1,
-                key=f"step6_w_{idx}"
+                key=f"step6_w_v2_{idx}"
             )
             weights.append((label_to_id[lab], float(ww)))
 
@@ -2921,9 +2746,11 @@ if intent_weights is None:
         wdf["weight"] = 1.0 / max(len(wdf), 1)
     else:
         wdf["weight"] = wdf["weight"] / s
-    intent_weights = wdf.copy()
 
-# Filters (minimal but useful)
+    wdf = _attach_intent_names(wdf)
+    intent_weights = wdf[["intent_id", "weight", "intent_name"]].copy()
+
+# Filters
 st.subheader("🔎 Optional Filters")
 f1, f2, f3 = st.columns(3)
 
@@ -2931,48 +2758,55 @@ with f1:
     min_txn_amt = st.number_input(
         "Min total spend (amt) in history",
         min_value=0.0, value=0.0, step=10.0,
-        key="step6_min_spend"
+        key="step6_min_spend_v2"
     )
 with f2:
     min_txn_count = st.number_input(
         "Min transaction count",
         min_value=0, value=0, step=1,
-        key="step6_min_txn_count"
+        key="step6_min_txn_count_v2"
     )
 with f3:
     recency_days = st.number_input(
         "Recency window (days): last purchase within",
         min_value=0, value=0, step=10,
-        key="step6_recency_days"
+        key="step6_recency_days_v2"
     )
 
-rank_btn = st.button("🎯 Build Ranked Audience", type="primary", use_container_width=True, key="step6_rank_btn")
+rank_btn = st.button(
+    "🎯 Build Ranked Audience",
+    type="primary",
+    use_container_width=True,
+    key="step6_rank_btn_v2"
+)
 
+# session outputs
 if "campaign_audience_ranked_df" not in st.session_state:
     st.session_state["campaign_audience_ranked_df"] = None
-
-# keep the join detail for treemap after building audience
 if "step6_join_detail_df" not in st.session_state:
     st.session_state["step6_join_detail_df"] = None
 
 if rank_btn:
     try:
-        # Compute match score: sum_i customer_intent_share(i) * campaign_weight(i)
         w = intent_weights.copy()
         w["intent_id"] = w["intent_id"].astype(str).str.strip()
         w["weight"] = pd.to_numeric(w["weight"], errors="coerce").fillna(0.0)
+        if "intent_name" not in w.columns:
+            w["intent_name"] = ""
+        w["intent_name"] = w["intent_name"].fillna("").astype(str).str.strip()
 
-        # join customer intents with weights
-        j = df_ci.merge(w, on="intent_id", how="inner")
+        # Join: customer intents × campaign weights
+        j = df_ci.merge(w[["intent_id", "weight", "intent_name"]].drop_duplicates(), on="intent_id", how="inner")
         j["match_component"] = j["intent_share"] * j["weight"]
 
+        # Score per customer
         score = (
             j.groupby("customer_id", as_index=False)["match_component"]
             .sum()
             .rename(columns={"match_component": "match_score"})
         )
 
-        # Explanation: top contributing intents per customer
+        # Explanation: top contributing intents
         j = j.sort_values(["customer_id", "match_component"], ascending=[True, False])
         j["comp_rank"] = j.groupby("customer_id").cumcount() + 1
         top_comp = j[j["comp_rank"] <= 5].copy()
@@ -2980,27 +2814,43 @@ if rank_btn:
         def _mk_explain(g):
             parts = []
             for _, r in g.iterrows():
-                nm = str(r.get("intent_name", "")) if "intent_name" in g.columns else ""
-                if nm:
-                    parts.append(f"{r['intent_id']} ({nm}): {r['match_component']:.3f}")
-                else:
-                    parts.append(f"{r['intent_id']}: {r['match_component']:.3f}")
+                nm = str(r.get("intent_name", "")).strip()
+                lab = nm if nm else str(r["intent_id"])
+                parts.append(f"{lab}: {float(r['match_component']):.3f}")
             return " | ".join(parts)
 
         explain = top_comp.groupby("customer_id").apply(_mk_explain).reset_index(name="top_contributors")
-
         out = score.merge(explain, on="customer_id", how="left")
 
-        # Attach spend, count, recency from txn_df
+        # Attach spend / count / recency from txn_df
         tx = txn_df.copy()
         tx.columns = tx.columns.str.strip().str.lower()
         tx["customer_id"] = tx["customer_id"].astype(str).str.strip()
-        tx["tx_date"] = pd.to_datetime(tx["tx_date"], errors="coerce")
+
+        # best-effort date column
+        tx_date_col = "tx_date" if "tx_date" in tx.columns else ("transaction_date" if "transaction_date" in tx.columns else None)
+        if tx_date_col is None:
+            tx["tx_date"] = pd.NaT
+            tx_date_col = "tx_date"
+        tx[tx_date_col] = pd.to_datetime(tx[tx_date_col], errors="coerce")
+
+        # best-effort amount column
+        amt_col = "amt" if "amt" in tx.columns else ("amount" if "amount" in tx.columns else None)
+        if amt_col is None:
+            tx["amt"] = 0.0
+            amt_col = "amt"
+        tx[amt_col] = pd.to_numeric(tx[amt_col], errors="coerce").fillna(0.0)
+
+        # best-effort tx id
+        tx_id_col = "tx_id" if "tx_id" in tx.columns else ("transaction_id" if "transaction_id" in tx.columns else None)
+        if tx_id_col is None:
+            tx["_tx_id_fallback"] = range(1, len(tx) + 1)
+            tx_id_col = "_tx_id_fallback"
 
         agg = tx.groupby("customer_id").agg(
-            total_spend=("amt", "sum"),
-            txn_count=("tx_id", "count"),
-            last_tx_date=("tx_date", "max")
+            total_spend=(amt_col, "sum"),
+            txn_count=(tx_id_col, "count"),
+            last_tx_date=(tx_date_col, "max")
         ).reset_index()
 
         out = out.merge(agg, on="customer_id", how="left")
@@ -3017,12 +2867,12 @@ if rank_btn:
         out = out.sort_values("match_score", ascending=False).reset_index(drop=True)
         out["rank"] = out.index + 1
         out["campaign_id"] = str(campaign_id)
-        out["campaign_name"] = str(campaign_row["campaign_name"])
+        out["campaign_name"] = str(campaign_row.get("campaign_name", "")).strip()
         out["built_at"] = pd.Timestamp.now().isoformat()
 
         st.session_state["campaign_audience_ranked_df"] = out
 
-        # Save join detail for treemap (only rows with customers that survived filters)
+        # Save join detail only for kept customers (for treemap)
         kept_customers = set(out["customer_id"].astype(str).str.strip().tolist())
         j_keep = j[j["customer_id"].astype(str).str.strip().isin(kept_customers)].copy()
         st.session_state["step6_join_detail_df"] = j_keep
@@ -3033,7 +2883,8 @@ if rank_btn:
         st.error(f"❌ Failed to build ranked audience: {e}")
         st.exception(e)
 
-if st.session_state.get("campaign_audience_ranked_df") is not None:
+# Preview + download
+if st.session_state.get("campaign_audience_ranked_df") is not None and len(st.session_state["campaign_audience_ranked_df"]) > 0:
     st.subheader("🏆 Ranked Audience (Preview)")
     aud = st.session_state["campaign_audience_ranked_df"]
     st.dataframe(aud.head(500), use_container_width=True, height=420)
@@ -3067,8 +2918,12 @@ else:
         dim_i = st.session_state["dim_intent_df"].copy()
         dim_i.columns = dim_i.columns.str.strip().str.lower()
 
-        # Required
+        if "intent_id" not in dim_i.columns:
+            st.info("dim_intent_df is missing intent_id. Re-generate/upload ontology in Step 2.")
+            st.stop()
+
         dim_i["intent_id"] = dim_i["intent_id"].astype(str).str.strip()
+
         if "intent_name" not in dim_i.columns:
             dim_i["intent_name"] = ""
         dim_i["intent_name"] = dim_i["intent_name"].fillna("").astype(str).str.strip()
@@ -3090,32 +2945,30 @@ else:
                 ls_map["lifestyle_name"] = ls_map["lifestyle_name"].fillna("Unknown").astype(str).str.strip()
 
         if ls_map is None or len(ls_map) == 0:
-            # Reuse ontology JSON fallback helper if available
             try:
                 ls_map = _get_lifestyle_name_map_from_ontology()
             except Exception:
                 ls_map = pd.DataFrame([{"lifestyle_id": "", "lifestyle_name": "Unknown"}])
 
-        # Base from join detail (already filtered to kept customers)
         jj = j_detail.copy()
         jj.columns = jj.columns.str.strip().str.lower()
         jj["customer_id"] = jj["customer_id"].astype(str).str.strip()
         jj["intent_id"] = jj["intent_id"].astype(str).str.strip()
 
-        # Optional controls for campaign treemap
+        # Controls
         cc1, cc2 = st.columns([1, 1])
         with cc1:
             min_customers_node = st.number_input(
                 "Hide nodes with < customers (campaign view)",
                 min_value=1, value=5, step=1,
-                key="step6_treemap_min_customers"
+                key="step6_treemap_min_customers_v2"
             )
         with cc2:
             comp_rank_threshold = st.selectbox(
                 "Include customer-intent rows if comp_rank ≤ (explain depth)",
                 options=[1, 3, 5, 999],
                 index=2,
-                key="step6_treemap_comp_rank_threshold"
+                key="step6_treemap_comp_rank_threshold_v2"
             )
 
         if "comp_rank" in jj.columns and int(comp_rank_threshold) != 999:
@@ -3128,6 +2981,7 @@ else:
             jj["lifestyle_id"] = ""
         jj["lifestyle_id"] = jj["lifestyle_id"].fillna("").astype(str).str.strip()
 
+        # keep mappable
         jj = jj[jj["lifestyle_id"] != ""].copy()
 
         # Lifestyle name
@@ -3144,7 +2998,7 @@ else:
         jj["intent_label"] = jj["intent_name"]
         jj.loc[jj["intent_label"] == "", "intent_label"] = jj["intent_id"].astype(str)
 
-        # Aggregate distinct customers per lifestyle-intent in audience
+        # Aggregate distinct customers per lifestyle-intent
         treemap_df = (
             jj.groupby(["lifestyle_name", "intent_label"], as_index=False)
             .agg(
@@ -3170,7 +3024,4 @@ else:
             fig.update_layout(height=560, margin=dict(t=10, l=10, r=10, b=10))
             st.plotly_chart(fig, use_container_width=True)
 
-
-st.divider()
-st.caption("End of app.")
 
