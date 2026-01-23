@@ -2257,25 +2257,71 @@ if build_profiles_btn:
         st.session_state["customer_intent_profile_df"] = cust_int_top
 
         # Lifestyle aggregation if we have ontology mapping
-        if has_ontology and "intent_id" in dim_intent_df.columns and "lifestyle_id" in dim_intent_df.columns:
-            map_df = dim_intent_df[["intent_id", "lifestyle_id", "lifestyle_name"]].copy() if "lifestyle_name" in dim_intent_df.columns else dim_intent_df[["intent_id", "lifestyle_id"]].copy()
-            map_df["intent_id"] = map_df["intent_id"].astype(str)
+       # Lifestyle aggregation if we have ontology mapping
+# Lifestyle aggregation if we have ontology mapping
+if has_ontology and "intent_id" in dim_intent_df.columns and "lifestyle_id" in dim_intent_df.columns:
+    # 1) intent -> lifestyle_id mapping (from dim_intent_df)
+    map_intent = dim_intent_df[["intent_id", "lifestyle_id"]].copy()
+    map_intent["intent_id"] = map_intent["intent_id"].astype(str).str.strip()
+    map_intent["lifestyle_id"] = map_intent["lifestyle_id"].astype(str).str.strip()
 
-            cust_ls = cust_int_top.merge(map_df, on="intent_id", how="left")
-            if "lifestyle_name" not in cust_ls.columns:
-                cust_ls["lifestyle_name"] = ""
+    cust_int_top = cust_int_top.copy()
+    cust_int_top["intent_id"] = cust_int_top["intent_id"].astype(str).str.strip()
 
-            cust_ls_agg = (
-                cust_ls.groupby(["customer_id", "lifestyle_id", "lifestyle_name"], as_index=False)["intent_share"]
-                .sum()
-                .rename(columns={"intent_share": "lifestyle_share"})
-            )
-            cust_ls_agg = cust_ls_agg.sort_values(["customer_id", "lifestyle_share"], ascending=[True, False])
-            cust_ls_agg["rank"] = cust_ls_agg.groupby("customer_id").cumcount() + 1
+    cust_ls = cust_int_top.merge(map_intent, on="intent_id", how="left")
 
-            st.session_state["customer_lifestyle_profile_df"] = cust_ls_agg
+    # 2) aggregate lifestyle share
+    cust_ls_agg = (
+        cust_ls.groupby(["customer_id", "lifestyle_id"], as_index=False, dropna=False)["intent_share"]
+        .sum()
+        .rename(columns={"intent_share": "lifestyle_share"})
+    )
+
+    # 3) attach lifestyle_name from dim_lifestyle_df (best source)
+    if "dim_lifestyle_df" in st.session_state:
+        dim_ls = st.session_state["dim_lifestyle_df"].copy()
+        dim_ls.columns = dim_ls.columns.str.strip().str.lower()
+
+        if "lifestyle_id" in dim_ls.columns:
+            dim_ls["lifestyle_id"] = dim_ls["lifestyle_id"].astype(str).str.strip()
+        if "lifestyle_name" not in dim_ls.columns:
+            dim_ls["lifestyle_name"] = ""
+
+        cust_ls_agg["lifestyle_id"] = cust_ls_agg["lifestyle_id"].astype(str).str.strip()
+        cust_ls_agg = cust_ls_agg.merge(
+            dim_ls[["lifestyle_id", "lifestyle_name"]].drop_duplicates(),
+            on="lifestyle_id",
+            how="left"
+        )
+    else:
+        # fallback: derive from ontology JSON (if dim_lifestyle_df missing)
+        ontology = st.session_state.get("ontology", {}) or {}
+        ls_rows = []
+        for ls in ontology.get("lifestyles", []) or []:
+            ls_rows.append({
+                "lifestyle_id": str(ls.get("lifestyle_id", "")).strip(),
+                "lifestyle_name": str(ls.get("lifestyle_name", "")).strip(),
+            })
+        dim_ls = pd.DataFrame(ls_rows).drop_duplicates()
+
+        if len(dim_ls) > 0 and "lifestyle_id" in cust_ls_agg.columns:
+            cust_ls_agg["lifestyle_id"] = cust_ls_agg["lifestyle_id"].astype(str).str.strip()
+            cust_ls_agg = cust_ls_agg.merge(dim_ls, on="lifestyle_id", how="left")
         else:
-            st.session_state["customer_lifestyle_profile_df"] = None
+            cust_ls_agg["lifestyle_name"] = ""
+
+    cust_ls_agg["lifestyle_name"] = cust_ls_agg.get("lifestyle_name", "").fillna("Unknown")
+    cust_ls_agg.loc[cust_ls_agg["lifestyle_name"].astype(str).str.strip() == "", "lifestyle_name"] = "Unknown"
+
+    # 4) rank per customer
+    cust_ls_agg = cust_ls_agg.sort_values(["customer_id", "lifestyle_share"], ascending=[True, False])
+    cust_ls_agg["rank"] = cust_ls_agg.groupby("customer_id").cumcount() + 1
+
+    st.session_state["customer_lifestyle_profile_df"] = cust_ls_agg
+else:
+    st.session_state["customer_lifestyle_profile_df"] = None
+
+
 
         st.success("✅ Customer profiles built successfully.")
 
