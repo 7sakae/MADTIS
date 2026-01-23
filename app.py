@@ -2432,99 +2432,131 @@ if st.session_state.get("customer_lifestyle_profile_df") is not None:
         use_container_width=True
     )
 # -------------------------
-# Overview Treemap (Lifestyle)
+# Overview Treemap (Lifestyle -> Intent drilldown)
 # -------------------------
-st.subheader("🧩 Customer Lifestyle Overview (Treemap)")
-st.caption("One rectangle = one lifestyle • size = # customers (distinct)")
+st.subheader("🧩 Customer Lifestyle → Intent Overview (Treemap)")
+st.caption("Click a lifestyle to drill into intents • size = # customers (distinct)")
 
-df_cl = st.session_state.get("customer_lifestyle_profile_df")
+df_ci = st.session_state.get("customer_intent_profile_df")
+dim_intent_df = st.session_state.get("dim_intent_df")
 
-if df_cl is None or len(df_cl) == 0:
-    st.info("No customer lifestyle profile available yet. Build Step 5 first.")
+if df_ci is None or len(df_ci) == 0:
+    st.info("No customer intent profile available yet. Build Step 5 first.")
+elif dim_intent_df is None or len(dim_intent_df) == 0:
+    st.info("Ontology intent mapping (dim_intent_df) not found. Generate/upload ontology in Step 2.")
 else:
     import plotly.express as px
 
-    df_cl = df_cl.copy()
-    df_cl["customer_id"] = df_cl["customer_id"].astype(str).str.strip()
-    df_cl["lifestyle_name"] = df_cl.get("lifestyle_name", "").fillna("Unknown").astype(str).str.strip()
-    df_cl.loc[df_cl["lifestyle_name"] == "", "lifestyle_name"] = "Unknown"
+    df_ci = df_ci.copy()
+    df_ci.columns = df_ci.columns.str.strip().str.lower()
+    df_ci["customer_id"] = df_ci["customer_id"].astype(str).str.strip()
+    df_ci["intent_id"] = df_ci["intent_id"].astype(str).str.strip()
 
-    # Optional: avoid double counting if multiple rows per (customer,lifestyle) exist
-    df_cl = df_cl.drop_duplicates(subset=["customer_id", "lifestyle_name"])
+    dim = dim_intent_df.copy()
+    dim.columns = dim.columns.str.strip().str.lower()
+    dim["intent_id"] = dim["intent_id"].astype(str).str.strip()
 
-    # Controls
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        rank_threshold = st.selectbox(
-            "Count lifestyle if rank ≤",
-            options=[1, 2, 3, 5, 10, 999],
-            index=2,  # default = 3
-            key="step5_treemap_rank_threshold"
-        )
-    with c2:
-        min_customers = st.number_input(
-            "Hide lifestyles with < customers",
-            min_value=1,
-            value=5,
-            step=1,
-            key="step5_treemap_min_customers"
-        )
-    with c3:
-        st.caption("Tip: rank≤1 shows primary identity only; rank≤3 shows top-3 identities.")
+    # Need lifestyle mapping
+    if "lifestyle_id" not in dim.columns:
+        st.error("dim_intent_df missing lifestyle_id. Cannot build Lifestyle → Intent treemap.")
+        st.stop()
 
-    # Apply rank filter if rank exists
-    if "rank" in df_cl.columns and int(rank_threshold) != 999:
-        df_view = df_cl[df_cl["rank"].fillna(999).astype(int) <= int(rank_threshold)].copy()
-    else:
-        df_view = df_cl.copy()
+    # Attach names (intent_name from dim if present; lifestyle_name either from dim or from dim_lifestyle_df/ontology)
+    if "intent_name" not in dim.columns:
+        dim["intent_name"] = ""
 
-    # Aggregate
-    treemap_df = (
-        df_view.groupby("lifestyle_name", as_index=False)
-        .agg(
-            customer_count=("customer_id", "nunique"),
-            avg_share=("lifestyle_share", "mean"),
-        )
-        .sort_values("customer_count", ascending=False)
+    # Lifestyle name resolution
+    lifestyle_name_map = None
+    if "dim_lifestyle_df" in st.session_state:
+        dls = st.session_state["dim_lifestyle_df"].copy()
+        dls.columns = dls.columns.str.strip().str.lower()
+        if "lifestyle_id" in dls.columns:
+            dls["lifestyle_id"] = dls["lifestyle_id"].astype(str).str.strip()
+            if "lifestyle_name" not in dls.columns:
+                dls["lifestyle_name"] = ""
+            lifestyle_name_map = dls[["lifestyle_id", "lifestyle_name"]].drop_duplicates()
+
+    # Merge customer intents -> ontology mapping
+    j = df_ci.merge(
+        dim[["intent_id", "intent_name", "lifestyle_id"]],
+        on="intent_id",
+        how="left"
     )
 
-    # Filter tiny lifestyles
+    # Fill lifestyle_name
+    j["lifestyle_id"] = j["lifestyle_id"].fillna("").astype(str).str.strip()
+
+    if lifestyle_name_map is not None and len(lifestyle_name_map) > 0:
+        j = j.merge(lifestyle_name_map, on="lifestyle_id", how="left")
+    else:
+        # fallback: try ontology JSON
+        ontology = st.session_state.get("ontology", {}) or {}
+        ls_rows = []
+        for ls in ontology.get("lifestyles", []) or []:
+            ls_rows.append({
+                "lifestyle_id": str(ls.get("lifestyle_id", "")).strip(),
+                "lifestyle_name": str(ls.get("lifestyle_name", "")).strip(),
+            })
+        dls2 = pd.DataFrame(ls_rows).drop_duplicates()
+        if len(dls2) > 0:
+            j = j.merge(dls2, on="lifestyle_id", how="left")
+        else:
+            j["lifestyle_name"] = ""
+
+    j["lifestyle_name"] = j.get("lifestyle_name", "").fillna("Unknown").astype(str).str.strip()
+    j.loc[j["lifestyle_name"] == "", "lifestyle_name"] = "Unknown"
+
+    j["intent_name"] = j.get("intent_name", "").fillna("").astype(str).str.strip()
+    j.loc[j["intent_name"] == "", "intent_name"] = j["intent_id"].astype(str)
+
+    # Controls
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        min_customers = st.number_input(
+            "Hide nodes with < customers",
+            min_value=1, value=5, step=1,
+            key="step5_treemap_min_customers_hi"
+        )
+    with c2:
+        st.caption("Tip: click a lifestyle rectangle to zoom into intents. Use the breadcrumb to go back.")
+
+    # Aggregate at lifestyle-intent level
+    treemap_df = (
+        j.groupby(["lifestyle_name", "intent_name"], as_index=False)
+        .agg(
+            customer_count=("customer_id", "nunique"),
+            avg_share=("intent_share", "mean"),
+        )
+    )
+
+    # Filter small intent nodes
     treemap_df = treemap_df[treemap_df["customer_count"] >= int(min_customers)].copy()
 
-    total_customers = int(df_cl["customer_id"].nunique())
-    treemap_df["customer_pct"] = treemap_df["customer_count"] / max(total_customers, 1)
-
-    # If everything filtered out
     if len(treemap_df) == 0:
-        st.info("All lifestyles were filtered out. Lower the minimum customer threshold.")
+        st.info("All nodes filtered out. Lower the minimum customer threshold.")
     else:
         fig = px.treemap(
             treemap_df,
-            path=["lifestyle_name"],
+            path=["lifestyle_name", "intent_name"],  # <-- hierarchy enables click drilldown
             values="customer_count",
             color="avg_share",
             hover_data={
                 "customer_count": True,
-                "customer_pct": ":.1%",
                 "avg_share": ":.3f",
             },
         )
-        fig.update_traces(
-            texttemplate="<b>%{label}</b><br>%{value} customers",
-            textposition="middle center"
-        )
         fig.update_layout(
-            height=520,
+            height=560,
             margin=dict(t=10, l=10, r=10, b=10)
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Small KPI row
+        # KPI row
+        total_customers = int(df_ci["customer_id"].nunique())
         k1, k2, k3 = st.columns(3)
         k1.metric("Total customers", f"{total_customers:,}")
-        k2.metric("Lifestyles shown", f"{len(treemap_df):,}")
-        k3.metric("Top lifestyle share", f"{treemap_df.iloc[0]['customer_pct']*100:.1f}%")
-
+        k2.metric("Lifestyles shown", f"{treemap_df['lifestyle_name'].nunique():,}")
+        k3.metric("Intent nodes shown", f"{len(treemap_df):,}")
 
 # ============================================================================
 # STEP 6: CAMPAIGN AUDIENCE BUILDER (MATCH CAMPAIGN → CUSTOMERS)
