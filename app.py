@@ -2431,6 +2431,100 @@ if st.session_state.get("customer_lifestyle_profile_df") is not None:
         mime="text/csv",
         use_container_width=True
     )
+# -------------------------
+# Overview Treemap (Lifestyle)
+# -------------------------
+st.subheader("🧩 Customer Lifestyle Overview (Treemap)")
+st.caption("One rectangle = one lifestyle • size = # customers (distinct)")
+
+df_cl = st.session_state.get("customer_lifestyle_profile_df")
+
+if df_cl is None or len(df_cl) == 0:
+    st.info("No customer lifestyle profile available yet. Build Step 5 first.")
+else:
+    import plotly.express as px
+
+    df_cl = df_cl.copy()
+    df_cl["customer_id"] = df_cl["customer_id"].astype(str).str.strip()
+    df_cl["lifestyle_name"] = df_cl.get("lifestyle_name", "").fillna("Unknown").astype(str).str.strip()
+    df_cl.loc[df_cl["lifestyle_name"] == "", "lifestyle_name"] = "Unknown"
+
+    # Optional: avoid double counting if multiple rows per (customer,lifestyle) exist
+    df_cl = df_cl.drop_duplicates(subset=["customer_id", "lifestyle_name"])
+
+    # Controls
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        rank_threshold = st.selectbox(
+            "Count lifestyle if rank ≤",
+            options=[1, 2, 3, 5, 10, 999],
+            index=2,  # default = 3
+            key="step5_treemap_rank_threshold"
+        )
+    with c2:
+        min_customers = st.number_input(
+            "Hide lifestyles with < customers",
+            min_value=1,
+            value=5,
+            step=1,
+            key="step5_treemap_min_customers"
+        )
+    with c3:
+        st.caption("Tip: rank≤1 shows primary identity only; rank≤3 shows top-3 identities.")
+
+    # Apply rank filter if rank exists
+    if "rank" in df_cl.columns and int(rank_threshold) != 999:
+        df_view = df_cl[df_cl["rank"].fillna(999).astype(int) <= int(rank_threshold)].copy()
+    else:
+        df_view = df_cl.copy()
+
+    # Aggregate
+    treemap_df = (
+        df_view.groupby("lifestyle_name", as_index=False)
+        .agg(
+            customer_count=("customer_id", "nunique"),
+            avg_share=("lifestyle_share", "mean"),
+        )
+        .sort_values("customer_count", ascending=False)
+    )
+
+    # Filter tiny lifestyles
+    treemap_df = treemap_df[treemap_df["customer_count"] >= int(min_customers)].copy()
+
+    total_customers = int(df_cl["customer_id"].nunique())
+    treemap_df["customer_pct"] = treemap_df["customer_count"] / max(total_customers, 1)
+
+    # If everything filtered out
+    if len(treemap_df) == 0:
+        st.info("All lifestyles were filtered out. Lower the minimum customer threshold.")
+    else:
+        fig = px.treemap(
+            treemap_df,
+            path=["lifestyle_name"],
+            values="customer_count",
+            color="avg_share",
+            hover_data={
+                "customer_count": True,
+                "customer_pct": ":.1%",
+                "avg_share": ":.3f",
+            },
+        )
+        fig.update_traces(
+            texttemplate="<b>%{label}</b><br>%{value} customers",
+            textposition="middle center"
+        )
+        fig.update_layout(
+            height=520,
+            margin=dict(t=10, l=10, r=10, b=10)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Small KPI row
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Total customers", f"{total_customers:,}")
+        k2.metric("Lifestyles shown", f"{len(treemap_df):,}")
+        k3.metric("Top lifestyle share", f"{treemap_df.iloc[0]['customer_pct']*100:.1f}%")
+
 
 # ============================================================================
 # STEP 6: CAMPAIGN AUDIENCE BUILDER (MATCH CAMPAIGN → CUSTOMERS)
