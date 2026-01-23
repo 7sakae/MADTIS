@@ -2368,7 +2368,7 @@ if build_profiles_btn:
 
             # Aggregate to customer-lifestyle
             cust_ls_agg = (
-                cust_ls[~missing_ls].groupby(["customer_id", "lifestyle_id", "lifestyle_name"], as_index=False)["intent_share"]
+                cust_ls[~missing_ls].groupby(["customer_id", "lifestyle_id"], as_index=False)["intent_share"]      #  "lifestyle_name"
                 .sum()
                 .rename(columns={"intent_share": "lifestyle_share"})
             )
