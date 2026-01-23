@@ -2463,8 +2463,12 @@ else:
         j["lifestyle_name"] = j.get("lifestyle_name", "Unknown").fillna("Unknown").astype(str).str.strip()
         j.loc[j["lifestyle_name"] == "", "lifestyle_name"] = "Unknown"
 
-        j["intent_name"] = j.get("intent_name", "").fillna("").astype(str).str.strip()
+        # Ensure intent_name exists safely (avoid j.get(...) returning a string)
+        if "intent_name" not in j.columns:
+            j["intent_name"] = ""
+        j["intent_name"] = j["intent_name"].fillna("").astype(str).str.strip()
         j.loc[j["intent_name"] == "", "intent_name"] = j["intent_id"].astype(str)
+
 
         # Aggregate distinct customer count per lifestyle-intent
         treemap_df = (
