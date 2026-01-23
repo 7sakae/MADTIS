@@ -2586,12 +2586,28 @@ campaigns_df = st.session_state["campaigns_df"].copy()
 campaigns_df["campaign_id"] = campaigns_df["campaign_id"].astype(str)
 
 # Choose campaign
+campaign_options = campaigns_df["campaign_id"].dropna().astype(str).str.strip().tolist()
+campaign_options = [c for c in campaign_options if c != ""]
+
+if len(campaign_options) == 0:
+    st.warning("No campaigns found. Upload/paste campaigns in Step 0 first.")
+    st.stop()
+
+def _fmt_campaign(cid: str) -> str:
+    try:
+        row = campaigns_df[campaigns_df["campaign_id"].astype(str).str.strip() == str(cid)].iloc[0]
+        nm = str(row.get("campaign_name", "")).strip()
+        return f"{cid} — {nm}" if nm else str(cid)
+    except Exception:
+        return str(cid)
+
 campaign_id = st.selectbox(
     "Select campaign",
-    options=campaigns_df["campaign_id"].tolist(),
-    format_func=lambda cid: f"{cid} — {campaigns_df.loc[campaigns_df['campaign_id'] == cid, 'campaign_name'].iloc[0]}",
-    key="step6_campaign_select"
+    options=campaign_options,
+    format_func=_fmt_campaign,
+    key="step6_campaign_select_v2"  # ✅ unique key
 )
+
 
 campaign_row = campaigns_df[campaigns_df["campaign_id"] == campaign_id].iloc[0]
 st.write(f"**Campaign brief:** {campaign_row['campaign_brief']}")
