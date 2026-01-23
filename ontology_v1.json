@@ -1,0 +1,989 @@
+{
+  "name": "AI-Generated Product Ontology",
+  "version": "v1",
+  "created_at": "2026-01-23T00:59:57.744813",
+  "total_products": 384,
+  "model": "gemini-2.5-flash",
+  "language": "en",
+  "lifestyles": [
+    {
+      "lifestyle_id": "LS_01",
+      "lifestyle_name": "Home Organization & Storage",
+      "definition": "Products for decluttering, storing, and managing items efficiently within the home.",
+      "intents": [
+        {
+          "intent_id": "IN_HOS_01",
+          "intent_name": "Efficient Home Organization",
+          "definition": "Seeking solutions to declutter, store, and manage items efficiently within the home.",
+          "include_examples": [
+            "storage bin set (6pk)",
+            "document tray",
+            "dish rack (plastic)",
+            "dry erase board",
+            "hanging folder tabs",
+            "ziploc bags (quart)",
+            "file box (portable)",
+            "bookends (steel)",
+            "desk organizer set",
+            "lint roller",
+            "file folders (100pk)"
+          ],
+          "exclude_examples": [
+            "shipping tape (clear)",
+            "push pins (100pk)",
+            "ratchet set (small)",
+            "high-speed blender",
+            "mailing tubes (3pk)",
+            "composition book"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_02",
+      "lifestyle_name": "Home Decor & Ambiance",
+      "definition": "Products to beautify living spaces and create a specific atmosphere.",
+      "intents": [
+        {
+          "intent_id": "IN_HDA_01",
+          "intent_name": "Enhancing Home Aesthetics",
+          "definition": "Searching for products to beautify living spaces and create a specific atmosphere.",
+          "include_examples": [
+            "glass tea light holders",
+            "essential oil diffuser",
+            "prayer rug (padded)",
+            "rose petal diffuser",
+            "smart digital photo frame",
+            "string lights (gold)",
+            "crystal glass vase",
+            "artificial christmas tree",
+            "silver picture frame",
+            "decorative lanterns (red)",
+            "winter scented reed diffuser"
+          ],
+          "exclude_examples": [
+            "incense stick sampler",
+            "push pins (100pk)",
+            "biodegradable waste bags",
+            "door stopper (rubber)",
+            "coasters (cork)",
+            "preserved red rose",
+            "couple's journal",
+            "tree ornament set (50pcs)",
+            "easter basket kit",
+            "salt shaker (single)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_03",
+      "lifestyle_name": "Kitchen & Dining",
+      "definition": "Items for cooking, food preparation, serving, and dining experiences.",
+      "intents": [
+        {
+          "intent_id": "IN_KDE_01",
+          "intent_name": "Cooking & Food Preparation",
+          "definition": "Searching for tools and supplies used for food preparation and cooking.",
+          "include_examples": [
+            "electric hot pot",
+            "non-stick cookware set",
+            "high-speed blender",
+            "aluminum foil (50ft)",
+            "roasting pan (large)",
+            "kitchen timer",
+            "can opener (manual)",
+            "all-purpose flour (5lb)"
+          ],
+          "exclude_examples": [
+            "crystal champagne flutes",
+            "red wine (premium)",
+            "stand mixer (5qt)",
+            "digital body weight scale",
+            "grease gun (manual)"
+          ]
+        },
+        {
+          "intent_id": "IN_KDE_02",
+          "intent_name": "Dining & Serveware",
+          "definition": "Desiring items for serving, dining, and enhancing meal presentation.",
+          "include_examples": [
+            "gravy boat (ceramic)",
+            "ceramic tea set",
+            "coasters (cork)",
+            "toothpick dispenser",
+            "bottle opener (wall)",
+            "linen napkin set"
+          ],
+          "exclude_examples": [
+            "juicer extractor",
+            "motor oil (5w-30)",
+            "pet grooming kit",
+            "stapler (heavy duty)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_04",
+      "lifestyle_name": "Home Appliances & Smart Devices",
+      "definition": "Electronic devices and smart technology for enhancing home comfort, efficiency, and daily routines.",
+      "intents": [
+        {
+          "intent_id": "IN_HASD_01",
+          "intent_name": "Smart Home & Appliance Upgrades",
+          "definition": "Seeking modern devices and appliances to automate or improve home functionality and comfort.",
+          "include_examples": [
+            "espresso machine",
+            "nespresso pods (50pk)",
+            "robot vacuum & mop",
+            "air purifier (hepa)",
+            "humidifier (cool mist)",
+            "smart digital photo frame"
+          ],
+          "exclude_examples": [
+            "can opener (manual)",
+            "table salt (26oz)",
+            "cooling towel",
+            "thermal underwear set",
+            "digital body weight scale"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_05",
+      "lifestyle_name": "Home Maintenance & Safety",
+      "definition": "Products for general upkeep, minor repairs, and ensuring a safe and functional home environment.",
+      "intents": [
+        {
+          "intent_id": "IN_HMS_01",
+          "intent_name": "Home Repairs & DIY",
+          "definition": "Looking for tools and materials to fix, improve, or maintain household items and structures.",
+          "include_examples": [
+            "electrical tape (black)",
+            "metal shims (pack)",
+            "steel wool (fine)",
+            "flat washer set",
+            "leather work gloves",
+            "window screen mesh",
+            "paint bucket (5gal)"
+          ],
+          "exclude_examples": [
+            "ratchet set (small)",
+            "car fuse assortment",
+            "paint thinner (1qt)",
+            "stapler (heavy duty)",
+            "can opener (manual)",
+            "10mm steel bolt"
+          ]
+        },
+        {
+          "intent_id": "IN_HMS_02",
+          "intent_name": "Home Safety & Security",
+          "definition": "Desiring products that enhance the safety, security, and general well-being within the home.",
+          "include_examples": [
+            "door stopper (rubber)",
+            "work light (portable)",
+            "air purifier (hepa)",
+            "fire extinguisher (compact)",
+            "carbon monoxide detector"
+          ],
+          "exclude_examples": [
+            "paint thinner (1qt)",
+            "degreaser spray",
+            "stapler (heavy duty)",
+            "can opener (manual)",
+            "car fuse assortment"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_06",
+      "lifestyle_name": "Cleaning & Household Essentials",
+      "definition": "Products for routine cleaning, upkeep, and maintaining hygiene and order in the home.",
+      "intents": [
+        {
+          "intent_id": "IN_CHE_01",
+          "intent_name": "Home Cleaning & Maintenance",
+          "definition": "Seeking products to keep living spaces tidy, hygienic, and well-maintained.",
+          "include_examples": [
+            "upholstery cleaner",
+            "sponges (cellulose)",
+            "cordless stick vacuum",
+            "dust pan & brush set",
+            "trash can (small)",
+            "air purifier (small room)",
+            "dish scrub sponge (3pk)",
+            "drain clog remover"
+          ],
+          "exclude_examples": [
+            "matches (strike box)",
+            "bubble wrap roll",
+            "car trash bag (hanging)",
+            "sandpaper multipack",
+            "wire brush set",
+            "caulk gun (heavy duty)"
+          ]
+        },
+        {
+          "intent_id": "IN_CHE_02",
+          "intent_name": "Eco-Friendly Household Solutions",
+          "definition": "Acquiring environmentally friendly products for household cleaning, waste management, or general utility.",
+          "include_examples": [
+            "biodegradable waste bags",
+            "safety pins (assorted)",
+            "eco-friendly laundry detergent",
+            "reusable cleaning cloths"
+          ],
+          "exclude_examples": [
+            "plastic drinking straws",
+            "pot holders (2pk)",
+            "chemical drain cleaner",
+            "disposable paper towels"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_07",
+      "lifestyle_name": "Gardening & Outdoor Living",
+      "definition": "Products for cultivating plants, maintaining outdoor spaces, and enhancing outdoor leisure.",
+      "intents": [
+        {
+          "intent_id": "IN_GOL_01",
+          "intent_name": "Garden Care & Cultivation",
+          "definition": "Seeking tools, supplies, and plants for gardening, landscaping, and plant care.",
+          "include_examples": [
+            "gardening gloves (leather)",
+            "potting soil (10lb)",
+            "seed starter kit",
+            "pruning shears",
+            "watering can (metal)"
+          ],
+          "exclude_examples": [
+            "lawn mower (electric)",
+            "weed trimmer (gas)",
+            "patio furniture set",
+            "outdoor grill (propane)"
+          ]
+        },
+        {
+          "intent_id": "IN_GOL_02",
+          "intent_name": "Outdoor Space Enhancement",
+          "definition": "Desiring items to furnish, decorate, or improve comfort and utility in outdoor living areas.",
+          "include_examples": [
+            "solar garden lights",
+            "patio umbrella (offset)",
+            "outdoor throw pillows",
+            "portable fire pit",
+            "bird feeder (hanging)"
+          ],
+          "exclude_examples": [
+            "camping tent (4-person)",
+            "hiking boots (waterproof)",
+            "fishing rod (spinning)",
+            "bicycle (mountain)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_08",
+      "lifestyle_name": "Personal Care & Hygiene",
+      "definition": "Products for maintaining personal cleanliness, appearance, and daily self-care routines.",
+      "intents": [
+        {
+          "intent_id": "IN_PCH_01",
+          "intent_name": "Daily Hygiene & Grooming",
+          "definition": "Items for maintaining personal cleanliness, appearance, and self-care routines.",
+          "include_examples": [
+            "facial cleansing brush",
+            "beard grooming kit",
+            "leather toiletry bag",
+            "electric toothbrush",
+            "natural deodorant (stick)"
+          ],
+          "exclude_examples": [
+            "pet grooming kit",
+            "can opener (manual)",
+            "motor oil (5w-30)",
+            "high-speed blender",
+            "yoga mat (extra thick)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_09",
+      "lifestyle_name": "Beauty & Grooming",
+      "definition": "Products for enhancing personal appearance, beauty routines, and stylistic expression.",
+      "intents": [
+        {
+          "intent_id": "IN_BG_01",
+          "intent_name": "Cosmetics & Personal Style",
+          "definition": "Seeking products for beauty routines, enhancing personal style, and fragrance.",
+          "include_examples": [
+            "eau de parfum (floral)",
+            "face paint pro kit",
+            "designer perfume set",
+            "oud fragrance set",
+            "lipstick (matte red)",
+            "eyeshadow palette (neutral)"
+          ],
+          "exclude_examples": [
+            "bath bomb gift set",
+            "steel wool (fine)",
+            "pet grooming kit",
+            "couple's massage oil",
+            "yoga mat (extra thick)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_10",
+      "lifestyle_name": "Health & Fitness",
+      "definition": "Items supporting physical activity, training, health goals, and overall well-being.",
+      "intents": [
+        {
+          "intent_id": "IN_HF_01",
+          "intent_name": "Fitness & Exercise Equipment",
+          "definition": "Looking for equipment or accessories to support physical activity, training, or health goals.",
+          "include_examples": [
+            "yoga mat (extra thick)",
+            "adjustable dumbbells",
+            "cooling neck fan",
+            "resistance band set",
+            "smart fitness tracker",
+            "golf putting mat"
+          ],
+          "exclude_examples": [
+            "all-weather parka",
+            "headlamp (led)",
+            "hiking backpack (40l)",
+            "noise-canceling headphones",
+            "car fuse assortment"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_11",
+      "lifestyle_name": "Fashion & Accessories",
+      "definition": "Apparel, footwear, and accessories for personal adornment and style.",
+      "intents": [
+        {
+          "intent_id": "IN_FA_01",
+          "intent_name": "Apparel & Clothing",
+          "definition": "Seeking clothing items for various occasions, styles, and personal expression.",
+          "include_examples": [
+            "polka dot lingerie set",
+            "silk indian sari",
+            "all-weather parka",
+            "denim jeans (slim fit)",
+            "cashmere sweater (v-neck)"
+          ],
+          "exclude_examples": [
+            "yoga mat (extra thick)",
+            "cooling neck fan",
+            "hiking backpack (40l)",
+            "resistance band set",
+            "car fuse assortment"
+          ]
+        },
+        {
+          "intent_id": "IN_FA_02",
+          "intent_name": "Personal Accessories & Adornment",
+          "definition": "Desiring accessories to complement outfits, enhance personal style, or serve functional purposes.",
+          "include_examples": [
+            "heart-shaped pendant",
+            "personalized cufflinks",
+            "leather wallet (bifold)",
+            "sunglasses (polarized)",
+            "silk scarf (patterned)"
+          ],
+          "exclude_examples": [
+            "bath bomb gift set",
+            "essential oil diffuser",
+            "incense stick sampler",
+            "yoga mat (extra thick)",
+            "cooling neck fan"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_12",
+      "lifestyle_name": "Wellness & Relaxation",
+      "definition": "Items promoting mental and physical relaxation, stress relief, and overall personal well-being.",
+      "intents": [
+        {
+          "intent_id": "IN_WR_01",
+          "intent_name": "Personal Relaxation & Comfort",
+          "definition": "Seeking items that promote mental and physical relaxation, stress relief, or pampering.",
+          "include_examples": [
+            "bath bomb gift set",
+            "essential oil diffuser",
+            "incense stick sampler",
+            "weighted blanket",
+            "scented candle (cinnamon)",
+            "electric hand warmer",
+            "noise-canceling headphones",
+            "luxury silk robe",
+            "meditation cushion",
+            "couple's massage oil",
+            "silk sleep mask"
+          ],
+          "exclude_examples": [
+            "yoga mat (extra thick)",
+            "cooling neck fan",
+            "scientific calculator",
+            "trailer hitch ball",
+            "personalized cufflinks",
+            "dry erase board",
+            "paint bucket (5gal)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_13",
+      "lifestyle_name": "Baby & Kids Essentials",
+      "definition": "Products for the care, comfort, development, and entertainment of babies and children.",
+      "intents": [
+        {
+          "intent_id": "IN_BKE_01",
+          "intent_name": "Infant & Toddler Care",
+          "definition": "Seeking essential products for the daily care, feeding, and comfort of infants and toddlers.",
+          "include_examples": [
+            "baby monitor (video)",
+            "disposable diapers (size 3)",
+            "organic baby formula",
+            "stroller (lightweight)",
+            "baby carrier (ergonomic)"
+          ],
+          "exclude_examples": [
+            "children's bicycle (16-inch)",
+            "educational board game",
+            "graphic novel (teen)",
+            "video game console (portable)"
+          ]
+        },
+        {
+          "intent_id": "IN_BKE_02",
+          "intent_name": "Kids' Play & Development",
+          "definition": "Desiring toys, games, and educational items that support children's learning, creativity, and entertainment.",
+          "include_examples": [
+            "building blocks (wooden)",
+            "children's storybook (hardcover)",
+            "art supplies for kids",
+            "educational tablet (kids edition)",
+            "bunny plush toy"
+          ],
+          "exclude_examples": [
+            "adult board game",
+            "professional art set",
+            "gaming headset (wireless)",
+            "high-speed blender"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_14",
+      "lifestyle_name": "Arts, Crafts & Hobbies",
+      "definition": "Tools, materials, and resources for creative expression, learning, and leisure activities.",
+      "intents": [
+        {
+          "intent_id": "IN_ACH_01",
+          "intent_name": "Creative Pursuits & Supplies",
+          "definition": "Seeking tools, materials, or resources that support artistic expression, crafts, or hobbies.",
+          "include_examples": [
+            "geometry math set",
+            "face paint pro kit",
+            "painting canvas (16x20)",
+            "knitting yarn (wool)",
+            "calligraphy pen set",
+            "model airplane kit"
+          ],
+          "exclude_examples": [
+            "push pins (100pk)",
+            "gaming console (next-gen)",
+            "portable ssd 500gb",
+            "dash cam (front & rear)",
+            "office chair (ergonomic)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_15",
+      "lifestyle_name": "Books, Music & Media",
+      "definition": "Products for reading, listening, and consuming various forms of entertainment and information.",
+      "intents": [
+        {
+          "intent_id": "IN_BMM_01",
+          "intent_name": "Reading & Literature",
+          "definition": "Seeking books, e-readers, and other literary materials for education, entertainment, or personal growth.",
+          "include_examples": [
+            "hardcover novel (bestseller)",
+            "e-reader (backlit)",
+            "audiobook subscription (1 year)",
+            "poetry collection (modern)",
+            "graphic novel (fantasy)"
+          ],
+          "exclude_examples": [
+            "vinyl record player",
+            "noise-canceling headphones",
+            "gaming console (next-gen)",
+            "art supplies for kids"
+          ]
+        },
+        {
+          "intent_id": "IN_BMM_02",
+          "intent_name": "Music & Audio Entertainment",
+          "definition": "Desiring devices, media, and accessories for listening to music and other audio content.",
+          "include_examples": [
+            "wireless headphones (noise-canceling)",
+            "vinyl record player",
+            "portable Bluetooth speaker",
+            "music streaming subscription",
+            "concert tickets (rock band)"
+          ],
+          "exclude_examples": [
+            "e-reader (backlit)",
+            "hardcover novel (bestseller)",
+            "gaming console (next-gen)",
+            "professional camera lens"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_16",
+      "lifestyle_name": "Gaming & Entertainment",
+      "definition": "Products for interactive digital entertainment, video games, and leisure activities.",
+      "intents": [
+        {
+          "intent_id": "IN_GE_01",
+          "intent_name": "Video Games & Consoles",
+          "definition": "Seeking gaming consoles, video games, and accessories for interactive digital entertainment.",
+          "include_examples": [
+            "gaming console (next-gen)",
+            "gaming headset (wireless)",
+            "video game (action-adventure)",
+            "portable gaming device",
+            "VR headset (standalone)"
+          ],
+          "exclude_examples": [
+            "portable ssd 500gb",
+            "dash cam (front & rear)",
+            "essential oil diffuser",
+            "office chair (ergonomic)",
+            "professional camera"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_17",
+      "lifestyle_name": "Photography & Videography",
+      "definition": "Equipment, accessories, and services for capturing, editing, and sharing visual media.",
+      "intents": [
+        {
+          "intent_id": "IN_PV_01",
+          "intent_name": "Camera Gear & Accessories",
+          "definition": "Seeking cameras, lenses, and accessories for photography and videography enthusiasts and professionals.",
+          "include_examples": [
+            "DSLR camera (full-frame)",
+            "mirrorless camera (compact)",
+            "professional camera lens",
+            "tripod (carbon fiber)",
+            "drone (with 4K camera)"
+          ],
+          "exclude_examples": [
+            "smartphone (latest model)",
+            "laptop (gaming)",
+            "portable ssd 500gb",
+            "gaming console (next-gen)"
+          ]
+        },
+        {
+          "intent_id": "IN_PV_02",
+          "intent_name": "Photo & Video Editing",
+          "definition": "Desiring software, tools, and services for editing, managing, and presenting photos and videos.",
+          "include_examples": [
+            "photo editing software (subscription)",
+            "video editing suite (pro)",
+            "external hard drive (4TB)",
+            "graphic tablet (drawing)",
+            "photo printer (dye-sublimation)"
+          ],
+          "exclude_examples": [
+            "office productivity suite",
+            "accounting software",
+            "gaming headset (wireless)",
+            "e-reader (backlit)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_18",
+      "lifestyle_name": "Outdoor Recreation & Sports",
+      "definition": "Gear, apparel, and equipment for outdoor activities, sports, and adventures.",
+      "intents": [
+        {
+          "intent_id": "IN_ORS_01",
+          "intent_name": "Outdoor Gear & Activities",
+          "definition": "Searching for gear and apparel to enjoy activities in nature or outdoor environments.",
+          "include_examples": [
+            "headlamp (led)",
+            "all-weather parka",
+            "cooling neck fan",
+            "hiking backpack (40l)",
+            "camping tent (4-person)",
+            "fishing rod (spinning)",
+            "bicycle (mountain)"
+          ],
+          "exclude_examples": [
+            "yoga mat (extra thick)",
+            "dash cam (front & rear)",
+            "car fuse assortment",
+            "portable ssd 500gb",
+            "golf putting mat"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_19",
+      "lifestyle_name": "Travel & Commute",
+      "definition": "Products for facilitating comfortable, organized, and efficient travel and daily commutes.",
+      "intents": [
+        {
+          "intent_id": "IN_TC_01",
+          "intent_name": "Travel Essentials & Efficiency",
+          "definition": "Looking for items that facilitate comfortable, organized, or efficient travel and daily commutes.",
+          "include_examples": [
+            "compression packing cubes",
+            "portable power bank",
+            "shipping tape (clear)",
+            "hiking backpack (40l)",
+            "commuter backpack",
+            "memory foam neck pillow",
+            "luggage set (hardshell)"
+          ],
+          "exclude_examples": [
+            "dash cam (front & rear)",
+            "portable ssd 500gb",
+            "golf putting mat",
+            "resistance band set",
+            "car fuse assortment"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_20",
+      "lifestyle_name": "Office, School & Study",
+      "definition": "Essential items and tools for daily tasks in an office, school, or home study environment.",
+      "intents": [
+        {
+          "intent_id": "IN_OSS_01",
+          "intent_name": "Office & School Supplies",
+          "definition": "Essential items for daily tasks in an office, school, or home study environment.",
+          "include_examples": [
+            "standing desk converter",
+            "document tray",
+            "sticky note variety pack",
+            "geometry math set",
+            "steel ruler (6-inch)",
+            "clipboard (plastic)",
+            "mechanical pencils",
+            "dry erase board",
+            "hanging folder tabs",
+            "ledger book"
+          ],
+          "exclude_examples": [
+            "push pins (100pk)",
+            "gaming console (next-gen)",
+            "flat washer set",
+            "grease gun (manual)",
+            "10mm steel bolt"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_21",
+      "lifestyle_name": "Professional & Business Solutions",
+      "definition": "Robust tools, ergonomic furniture, and digital devices for demanding work, study, and business operations.",
+      "intents": [
+        {
+          "intent_id": "IN_PBS_01",
+          "intent_name": "Advanced Work & Productivity",
+          "definition": "Seeking robust tools, ergonomic furniture, and digital devices for demanding work and study.",
+          "include_examples": [
+            "stapler (heavy duty)",
+            "ergonomic office chair",
+            "tablet (10-inch)",
+            "professional accounting software",
+            "network attached storage (NAS)",
+            "high-speed document scanner"
+          ],
+          "exclude_examples": [
+            "steel ruler (6-inch)",
+            "mechanical pencils",
+            "can opener (manual)",
+            "flat washer set",
+            "gaming console (next-gen)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_22",
+      "lifestyle_name": "Consumer Electronics & Tech",
+      "definition": "Electronic devices, accessories, and components for computing, entertainment, and connectivity.",
+      "intents": [
+        {
+          "intent_id": "IN_CET_01",
+          "intent_name": "Electronic Devices & Gadgets",
+          "definition": "Desiring electronic devices, accessories, or components for computing, entertainment, or connectivity.",
+          "include_examples": [
+            "portable ssd 500gb",
+            "gaming console (next-gen)",
+            "portable power bank",
+            "tablet (10-inch)",
+            "noise-canceling headphones",
+            "smart digital photo frame",
+            "smart fitness tracker"
+          ],
+          "exclude_examples": [
+            "dash cam (front & rear)",
+            "essential oil diffuser",
+            "electrical tape (black)",
+            "metal shims (pack)",
+            "car fuse assortment"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_23",
+      "lifestyle_name": "Gifting & Special Occasions",
+      "definition": "Products suitable for presents, special occasions, and showing appreciation.",
+      "intents": [
+        {
+          "intent_id": "IN_GSO_01",
+          "intent_name": "Thoughtful & Personalized Gifts",
+          "definition": "Searching for items to give as presents for various occasions, showing care or appreciation.",
+          "include_examples": [
+            "heart-shaped pendant",
+            "bath bomb gift set",
+            "dark chocolate bars",
+            "personalized cufflinks",
+            "preserved red rose",
+            "couple's journal",
+            "red velvet gift box",
+            "birthday greeting cards",
+            "engraved fountain pen",
+            "bunny plush toy",
+            "embroidered throw",
+            "silk sleep mask"
+          ],
+          "exclude_examples": [
+            "red wine (premium)",
+            "crystal champagne flutes",
+            "face paint pro kit",
+            "christmas stocking set",
+            "linen napkin set",
+            "designer perfume set",
+            "paint bucket (5gal)",
+            "paper fasteners (100pk)"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_24",
+      "lifestyle_name": "Party & Event Planning",
+      "definition": "Products for enhancing celebrations, hosting guests, and marking significant events.",
+      "intents": [
+        {
+          "intent_id": "IN_PEP_01",
+          "intent_name": "Event Hosting & Supplies",
+          "definition": "Desiring products to enhance celebrations, host guests, or mark significant events.",
+          "include_examples": [
+            "crystal champagne flutes",
+            "red wine (premium)",
+            "electric hot pot",
+            "tree ornament set (50pcs)",
+            "easter basket kit",
+            "silk indian sari",
+            "traditional red envelopes",
+            "roasting pan (large)",
+            "portable beverage cooler",
+            "linen napkin set",
+            "christmas stocking set"
+          ],
+          "exclude_examples": [
+            "dark chocolate bars",
+            "face paint pro kit",
+            "decorative lanterns (red)",
+            "10mm steel bolt",
+            "measuring tape (25ft)",
+            "preserved red rose",
+            "couple's journal"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_25",
+      "lifestyle_name": "Pet Care & Supplies",
+      "definition": "Items dedicated to the health, comfort, and general well-being of pets.",
+      "intents": [
+        {
+          "intent_id": "IN_PCS_01",
+          "intent_name": "Pet Health & Comfort",
+          "definition": "Seeking items that provide comfort, support health, or improve the living conditions for pets.",
+          "include_examples": [
+            "orthopedic dog bed",
+            "aquarium water filter",
+            "retractable dog leash",
+            "dental chew treats",
+            "pet grooming kit",
+            "automatic cat feeder",
+            "cat scratching post",
+            "microchip pet door"
+          ],
+          "exclude_examples": [
+            "steel wool (fine)",
+            "white vinegar (1gal)",
+            "leather work gloves",
+            "facial cleansing brush",
+            "cooling towel",
+            "thermal underwear set"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_26",
+      "lifestyle_name": "Automotive & Vehicle Maintenance",
+      "definition": "Products for vehicle upkeep, safety, and in-car technology.",
+      "intents": [
+        {
+          "intent_id": "IN_AVM_01",
+          "intent_name": "Vehicle Maintenance & Repair",
+          "definition": "Seeking parts, fluids, or tools necessary for keeping a vehicle in good working order.",
+          "include_examples": [
+            "brake fluid (dot 4)",
+            "car fuse assortment",
+            "ratchet set (small)",
+            "grease gun (manual)",
+            "motor oil (5w-30)",
+            "jack stands (2-ton)"
+          ],
+          "exclude_examples": [
+            "electrical tape (black)",
+            "metal shims (pack)",
+            "leather work gloves",
+            "flat washer set",
+            "home improvement tools"
+          ]
+        },
+        {
+          "intent_id": "IN_AVM_02",
+          "intent_name": "Automotive Safety & Tech",
+          "definition": "Desiring accessories or devices that improve vehicle safety, security, or in-car technology.",
+          "include_examples": [
+            "dash cam (front & rear)",
+            "portable power bank",
+            "cooling neck fan",
+            "car trash bag (hanging)",
+            "tire pressure gauge (digital)",
+            "car seat organizer"
+          ],
+          "exclude_examples": [
+            "headlamp (led)",
+            "portable ssd 500gb",
+            "essential oil diffuser",
+            "yoga mat (extra thick)",
+            "home security camera"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_27",
+      "lifestyle_name": "Tools & Home Improvement",
+      "definition": "Tools, parts, and supplies for general home improvement, repairs, and DIY projects.",
+      "intents": [
+        {
+          "intent_id": "IN_THI_01",
+          "intent_name": "General Tools & Hardware",
+          "definition": "Seeking general purpose tools and components for various home repair and do-it-yourself projects.",
+          "include_examples": [
+            "flat washer set",
+            "leather work gloves",
+            "window screen mesh",
+            "ratchet set (small)",
+            "drill bit set (titanium)",
+            "measuring tape (25ft)",
+            "hammer (claw)",
+            "10mm steel bolt"
+          ],
+          "exclude_examples": [
+            "stapler (heavy duty)",
+            "can opener (manual)",
+            "motor oil (5w-30)",
+            "car fuse assortment",
+            "kitchen timer"
+          ]
+        }
+      ]
+    },
+    {
+      "lifestyle_id": "LS_28",
+      "lifestyle_name": "Sustainable & Eco-Friendly Living",
+      "definition": "Products and practices that support an environmentally conscious and sustainable lifestyle.",
+      "intents": [
+        {
+          "intent_id": "IN_SEL_01",
+          "intent_name": "Eco-Conscious Products & Practices",
+          "definition": "Acquiring environmentally friendly products for household, personal, and general utility, promoting sustainable living.",
+          "include_examples": [
+            "biodegradable waste bags",
+            "safety pins (assorted)",
+            "reusable shopping bags",
+            "bamboo toothbrush",
+            "solar-powered charger",
+            "compost bin (kitchen)",
+            "water filter pitcher (BPA-free)"
+          ],
+          "exclude_examples": [
+            "plastic drinking straws",
+            "pot holders (2pk)",
+            "chemical drain cleaner",
+            "single-use plastic bags",
+            "gasoline-powered tools"
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "description": "AI-generated ontology from product catalog",
+    "n_lifestyles": 28,
+    "n_intents": 37,
+    "chunking_method": "Category-Stratified Interleaving (CSI)",
+    "chunk_size": 40,
+    "product_slice_chars": 240,
+    "seed": 42
+  }
+}

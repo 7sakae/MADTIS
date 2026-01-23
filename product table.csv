@@ -1,0 +1,385 @@
+product_id,product_title,product_description,product_category
+P001,Heart-Shaped Pendant,Sterling silver necklace with a small heart charm; gift-boxed.,Apparel & Accessories
+P002,Polka Dot Lingerie Set,Elegant and comfortable lace-trimmed sleepwear set.,Apparel & Accessories
+P003,Luxury Silk Robe,High-quality 100% silk lounge robe for premium self-care.,Apparel & Accessories
+P004,Leather Toiletry Bag,Genuine leather organizer for grooming and travel essentials.,Apparel & Accessories
+P005,Commuter Backpack,Padded laptop compartment with water-resistant exterior.,Apparel & Accessories
+P006,Silk Indian Sari,Traditional embroidered festive wear for Diwali.,Apparel & Accessories
+P007,Skeleton Costume Set,Full-body glow-in-the-dark costume for parties.,Apparel & Accessories
+P008,Kids' Rolling Backpack,Ergonomic bag with wheels for school needs.,Apparel & Accessories
+P009,Sun Hat (Wide Brim),Foldable straw hat with UPF 50+ protection.,Apparel & Accessories
+P010,Thermal Underwear Set,Moisture-wicking base layer for winter protection.,Apparel & Accessories
+P011,All-Weather Parka,"Waterproof, insulated jacket for extreme cold.",Apparel & Accessories
+P012,Leather Work Gloves,Reinforced palm and fingertips for heavy labor.,Apparel & Accessories
+P013,Anti-Blue Light Glasses,Lightweight frames to reduce digital eye strain.,Apparel & Accessories
+P014,Silk Necktie (Navy),100% mulberry silk tie for formal business wear.,Apparel & Accessories
+P015,Canvas Tote Bag,Heavy-duty reusable bag for daily errands.,Apparel & Accessories
+P016,Car Dash Camera 4K,Ultra-HD dash cam with night vision and G-sensor.,Automotive
+P017,Dash Cam (Front & Rear),Dual-camera system for automotive category sale.,Automotive
+P018,Brake Fluid (DOT 4),High-performance hydraulic fluid for disc brakes.,Automotive
+P019,Tire Pressure Gauge,Simple pencil-style gauge for measuring PSI.,Automotive
+P020,Wiper Blade (22-inch),Standard all-weather replacement windshield wiper.,Automotive
+P021,Car Fuse Assortment,50-piece box of common automotive blade fuses.,Automotive
+P022,Degreaser Spray,Heavy-duty industrial engine and part cleaner.,Automotive
+P023,Microfiber Glass Cloth,Lint-free cleaning cloth for windows and mirrors.,Automotive
+P024,Antifreeze/Coolant,1 Gallon pre-mixed 50/50 radiator fluid.,Automotive
+P025,Funnel Set (3pc),Nested plastic funnels for automotive fluids.,Automotive
+P026,Car Wash Sponge,Extra-large bone-shaped high-density foam.,Automotive
+P027,Tire Shine Spray,Silicone-based dressing for rubber sidewalls.,Automotive
+P028,Microfiber Wash Mitt,Padded glove for gentle exterior car washing.,Automotive
+P029,Grease Gun (Manual),Lever-action tool for lubricating mechanical joints.,Automotive
+P030,Motor Oil (5W-30),1 Quart synthetic blend engine lubricant.,Automotive
+P031,Windshield Fluid Tablet,Dissolvable tablet for making washer fluid.,Automotive
+P032,Scraper (Ice),Plastic blade with brush for winter car windows.,Automotive
+P033,Upholstery Cleaner,Foam spray for car seats and floor mats.,Automotive
+P034,Battery Terminal Cleaner,Wire brush tool for removing corrosion from terminals.,Automotive
+P035,Torque Wrench,1/2-inch drive click-style adjustable wrench.,Automotive
+P036,Wheel Cleaner Spray,Acid-free formula for removing brake dust.,Automotive
+P037,Tire Plug Kit,Emergency repair tools for punctured tubeless tires.,Automotive
+P038,Car Wax (Liquid),Protective polymer coating for exterior shine.,Automotive
+P039,Plastic Rivet Kit,Assorted clips for interior car trim and panels.,Automotive
+P040,Mechanics Gloves,Padded synthetic leather for hand protection.,Automotive
+P041,Headlight Restore Kit,Sanding pads and polish for cloudy plastic lenses.,Automotive
+P042,Fuel Stabilizer,Additive for keeping stored gasoline fresh.,Automotive
+P043,Brake Cleaner,Fast-drying solvent for removing oil from rotors.,Automotive
+P044,Air Filter (Engine),Paper element replacement for standard sedan.,Automotive
+P045,Spark Plug (Single),Standard platinum-tipped ignition component.,Automotive
+P046,Gas Can (1 Gallon),Red plastic container with spout for fuel.,Automotive
+P047,Bungee Cord Set,6-pack of assorted lengths for securing cargo.,Automotive
+P048,Jack Stands (2-Ton),Pair of steel support stands for car repair.,Automotive
+P049,Oil Drain Pan,Low-profile plastic basin with pour spout.,Automotive
+P050,Shop Towels (Roll),Heavy-duty blue paper towels for oil/grease.,Automotive
+P051,Car Wax Applicator,Microfiber-wrapped foam pads for detailing.,Automotive
+P052,Scratch Remover Pen,Clear coat filler for minor car paint scuffs.,Automotive
+P053,Trailer Hitch Ball,2-inch chrome steel ball for towing.,Automotive
+P054,Car Battery Charger,12V automatic maintainer for vehicle storage.,Automotive
+P055,Seat Belt Extender,Universal buckle adapter for comfort.,Automotive
+P056,Steering Wheel Cover,Black synthetic leather grip for sun protection.,Automotive
+P057,Car Interior Dust Gel,Reusable sticky gel for cleaning dashboard vents.,Automotive
+P058,Windshield Sunshade,Reflective silver accordion-style car window cover.,Automotive
+P059,License Plate Frame,Simple black plastic frame with mounting screws.,Automotive
+P060,OBD2 Scanner (Basic),Code reader for engine diagnostic lights.,Automotive
+P061,Car Trash Bag (Hanging),Small leak-proof bin for back of seat.,Automotive
+P062,Mirror Glue,High-strength adhesive for rearview mirrors.,Automotive
+P063,Gas Cap (Universal),Replacement tethered fuel tank cap.,Automotive
+P064,Car Air Freshener Tree,Single hanging pine-scented paper tree.,Automotive
+P065,Blind Spot Mirror,2-pack of stick-on convex small mirrors.,Automotive
+P066,Valve Stem Caps,4-pack of black plastic tire air caps.,Automotive
+P067,Car Shammy Cloth,Large synthetic drying towel for streak-free car wash.,Automotive
+P068,Luxury Chocolate Truffles,Box of 12 handcrafted artisanal dark and milk chocolates.,Consumables
+P069,Red Wine (Premium),750ml bottle of full-bodied Cabernet Sauvignon for date nights.,Consumables
+P070,Red Velvet Gift Box,Premium box of red velvet cupcakes with romantic message card.,Consumables
+P071,Dried Fruit Gift Box,"Assorted premium dates, nuts, and dried tropical fruits.",Consumables
+P072,All-Purpose Flour (5lb),Bleached white flour for general cooking.,Consumables
+P073,Table Salt (26oz),Iodized granulated salt for everyday seasoning.,Consumables
+P074,White Vinegar (1gal),Multipurpose liquid for cooking and cleaning.,Consumables
+P075,Nespresso Pods (50pk),Assorted intensity espresso capsules for home brewing.,Consumables
+P076,Organic Matcha Powder,Ceremonial grade green tea powder (100g).,Consumables
+P077,Dried Mango Slices,"Unsweetened, sulfur-free organic fruit snacks.",Consumables
+P078,Roasted Almonds (Salted),Family-sized bulk bag of heart-healthy nuts.,Consumables
+P079,Sparkling Water (12pk),Lemon-flavored zero-calorie carbonated water.,Consumables
+P080,Cold Brew Concentrate,"32oz bottle of smooth, low-acid coffee base.",Consumables
+P081,Dark Chocolate Bars,70% cacao fair-trade chocolate bars (3pk).,Consumables
+P082,Multivitamin Gummies,Daily nutritional support for adults (90ct).,Consumables
+P083,Microfiber Mop System,360-degree spin mop with bucket and 2 refills.,Convenience & Essentials
+P084,AA Alkaline Batteries (24pk),Bulk pack of long-lasting 1.5V alkaline cells.,Convenience & Essentials
+P085,Extension Cord (3ft),Short single-outlet grounded extension wire.,Convenience & Essentials
+P086,Rubber Bands (#33),1lb bag of standard size elastic rubber bands.,Convenience & Essentials
+P087,Plastic Zip Ties (100pk),8-inch nylon cable ties for wire management.,Convenience & Essentials
+P088,Super Glue (Gel),Small 5g tube of instant cyanoacrylate adhesive.,Convenience & Essentials
+P089,Bubble Wrap Roll,12-inch wide perforated packing material for shipping.,Convenience & Essentials
+P090,Trash Can (Small),5-gallon plastic bin for bathroom or office.,Convenience & Essentials
+P091,Flashlight Batteries (D),2-pack of heavy-duty D-cell batteries.,Convenience & Essentials
+P092,Masking Tape (1-inch),50-yard roll of general-purpose beige tape.,Convenience & Essentials
+P093,Shipping Tape (Clear),2-inch wide strong adhesive for box sealing.,Convenience & Essentials
+P094,Utility Scissors,8-inch stainless steel blades for cardboard/plastic.,Convenience & Essentials
+P095,String (Cotton),200ft spool of thin white utility twine.,Convenience & Essentials
+P096,Light Bulbs (60W LED),4-pack of warm white energy-efficient bulbs.,Convenience & Essentials
+P097,Dish Scrub Sponge (3pk),Dual-sided scouring pads for heavy cleaning.,Convenience & Essentials
+P098,Steel Wool (Fine),Pack of 12 pads for polishing and cleaning.,Convenience & Essentials
+P099,Laundry Mesh Bag,Zippered bag for washing delicate clothing items.,Convenience & Essentials
+P100,lint Roller,Adhesive sheets for removing hair from fabric.,Convenience & Essentials
+P101,Matches (Strike Box),10-pack of wooden safety matchboxes.,Convenience & Essentials
+P102,Dust Pan & Brush Set,Handheld plastic duo for small mess cleanup.,Convenience & Essentials
+P103,Drain Clog Remover,Chemical liquid for dissolving hair and grease.,Convenience & Essentials
+P104,Toilet Plunger,Heavy-duty rubber cup with wooden handle.,Convenience & Essentials
+P105,Aluminum Foil (50ft),Standard gauge wrap for food storage and cooking.,Convenience & Essentials
+P106,Baking Soda (1lb),Pure sodium bicarbonate for baking and cleaning.,Convenience & Essentials
+P107,Clothes Pins (50pk),Traditional wooden spring-loaded pegs.,Convenience & Essentials
+P108,Safety Pins (Assorted),100-pack of various metal safety pin sizes.,Convenience & Essentials
+P109,Cotton Swabs (500ct),Double-tipped paper sticks with cotton ends.,Convenience & Essentials
+P110,Napkins (White Paper),200-count pack of 1-ply everyday napkins.,Convenience & Essentials
+P111,Spatula (Silicone),Heat-resistant tool for cooking and scraping.,Convenience & Essentials
+P112,Can Opener (Manual),Hand-cranked steel blade with comfort grip.,Convenience & Essentials
+P113,Vegetable Peeler,Swivel blade tool for potato and carrot prep.,Convenience & Essentials
+P114,Measuring Cups (Plastic),4-piece nested set for kitchen measurements.,Convenience & Essentials
+P115,Whisk (Steel),10-inch wire whisk for mixing and aerating.,Convenience & Essentials
+P116,Kitchen Timer,Digital countdown clock with loud alarm.,Convenience & Essentials
+P117,Dish Rack (Plastic),Simple counter-top draining tray and rack.,Convenience & Essentials
+P118,Salt Shaker (Single),Basic glass dispenser with stainless steel top.,Convenience & Essentials
+P119,Ice Cube Tray (2pk),Standard blue plastic trays for 16 cubes each.,Convenience & Essentials
+P120,Pot Holders (2pk),Padded cotton fabric for handling hot pans.,Convenience & Essentials
+P121,Cutting Board (Small),Plastic chopping mat for quick food prep.,Convenience & Essentials
+P122,Bottle Opener (Wall),Metal mountable opener for soda and beer.,Convenience & Essentials
+P123,Plastic Drinking Straws,100-pack of flexible multi-colored straws.,Convenience & Essentials
+P124,Toothpick Dispenser,Small clear plastic shaker for table use.,Convenience & Essentials
+P125,Coasters (Cork),4-pack of plain round absorbent cork pads.,Convenience & Essentials
+P126,Tinfoil Pans (3pk),Disposable aluminum trays for oven use.,Convenience & Essentials
+P127,Ziploc Bags (Quart),50-count box of slider-seal storage bags.,Convenience & Essentials
+P128,Sponges (Cellulose),2-pack of absorbent yellow cleaning sponges.,Convenience & Essentials
+P129,Instant Film Camera,Analog camera for capturing romantic memories and dates.,Electronics
+P130,Noise-Canceling Headphones,Active noise-canceling over-ear headphones for study focus.,Electronics
+P131,Smart Digital Photo Frame,Wi-Fi connected frame for sharing family celebration photos.,Electronics
+P132,Portable Beverage Cooler,Compact electric cooler for wedding outdoor celebrations.,Electronics
+P133,Smoke Machine,Portable fog machine with LED lights for hosting.,Electronics
+P134,Cooling Neck Fan,Hands-free portable USB fan for beach heat.,Electronics
+P135,Electric Hand Warmer,Rechargeable pocket warmer for cold-season comfort.,Electronics
+P136,Smartwatch Series 9,High-value tech upgrade for BFCM deals.,Electronics
+P137,Robot Vacuum & Mop,Laser-mapping automated cleaner for stock-up.,Electronics
+P138,Gaming Console (Next-Gen),Latest hardware for BFCM category promotion.,Electronics
+P139,Soundbar (Dolby Atmos),Home theater audio system for deep deals.,Electronics
+P140,Wireless Security Camera,2-pack 1080p indoor/outdoor cameras for deals.,Electronics
+P141,Tablet (10-inch),Budget-friendly tablet for mid-year festival.,Electronics
+P142,Portable SSD 500GB,High-speed external storage for tech upgrades.,Electronics
+P143,Mechanical Keyboard,RGB-backlit wired keyboard for PC upgrades.,Electronics
+P144,Wireless Charging Pad,15W fast-charging station for impulse stock-up.,Electronics
+P145,"PC Monitor 27"" IPS",144Hz gaming/work monitor for tech promotions.,Electronics
+P146,Golf Putting Mat,9ft indoor practice mat with auto-ball return.,Fitness & Wellness
+P147,Yoga Mat (Extra Thick),6mm non-slip mat for joint protection.,Fitness & Wellness
+P148,Resistance Band Set,5 levels of elastic loops for strength training.,Fitness & Wellness
+P149,Foam Roller,High-density roller for muscle recovery.,Fitness & Wellness
+P150,Adjustable Dumbbells,Pair of 5-25lb space-saving weights.,Fitness & Wellness
+P151,Massage Gun,Percussion therapy device with 4 attachments.,Fitness & Wellness
+P152,Essential Oil Diffuser,Ultrasonic mist for aromatherapy and wellness.,Fitness & Wellness
+P153,Smart Fitness Tracker,Heart rate and sleep monitor with GPS.,Fitness & Wellness
+P154,Ab Roller Wheel,Dual-wheel design for core stability workouts.,Fitness & Wellness
+P155,Jump Rope (Weighted),Speed rope for cardio and endurance.,Fitness & Wellness
+P156,Epsom Salt (Unscented),5lb bag for soothing muscle baths.,Fitness & Wellness
+P157,Meditation Cushion,Buckwheat-filled zafu for posture support.,Fitness & Wellness
+P158,Digital Body Weight Scale,Tempered glass scale with high-precision sensors.,Fitness & Wellness
+P159,Cooling Towel,Instant evaporative cooling for post-workout.,Fitness & Wellness
+P160,Kettlebell (15lb),Cast iron weight with wide grip for swings.,Fitness & Wellness
+P161,Preserved Red Rose,Single premium long-lasting rose in a glass dome; symbolic gift.,Gifts & Ceremonial
+P162,Traditional Red Envelopes,Set of 50 gold-foiled envelopes for LNY gifting.,Gifts & Ceremonial
+P163,Prayer Rug (Padded),Soft velvet prayer mat with non-slip backing.,Gifts & Ceremonial
+P164,Diya Oil Lamp Set,12-pack traditional clay lamps for Diwali decoration.,Gifts & Ceremonial
+P165,Silver Coin (Pure),10g pure silver coin for auspicious Diwali gifting.,Gifts & Ceremonial
+P166,Easter Basket Kit,Willow basket with colorful grass and decorative eggs.,Gifts & Ceremonial
+P167,Wedding Guest Book,Gold-leaf edged pages for ceremonial signatures.,Gifts & Ceremonial
+P168,Birthday Greeting Cards,10-pack of assorted minimalist celebratory cards.,Gifts & Ceremonial
+P169,Incense Stick Sampler,Sandalwood and Jasmine sticks for meditation.,Gifts & Ceremonial
+P170,Silver Picture Frame,5x7 polished metal frame for milestone photos.,Gifts & Ceremonial
+P171,Prayer Candle (White),Unscented long-burning pillar candle.,Gifts & Ceremonial
+P172,Gift Wrap Roll (Gold),High-gloss metallic paper for luxury gifting.,Gifts & Ceremonial
+P173,Glass Tea Light Holders,Set of 6 for tableside ceremonial lighting.,Gifts & Ceremonial
+P174,Ceremony Silk Scarf,Red traditional wrap for cultural festivities.,Gifts & Ceremonial
+P175,Personalized Cufflinks,Engravable stainless steel for formal gifts.,Gifts & Ceremonial
+P176,Silk Sleep Mask,100% mulberry silk eye mask for luxury rest and self-care.,Health & Beauty
+P177,Eau de Parfum (Floral),50ml premium fragrance with notes of jasmine and rose.,Health & Beauty
+P178,Couple's Massage Oil,Essential oil blend with lavender and sandalwood for relaxation.,Health & Beauty
+P179,Bath Bomb Gift Set,Pack of 6 organic fizzing bath bombs for a spa-at-home experience.,Health & Beauty
+P180,Rose Petal Diffuser,Ultrasonic oil diffuser with rose-scented essential oil set.,Health & Beauty
+P181,Foot Massager (Heated),Shiatsu foot massager for at-home relaxation and comfort.,Health & Beauty
+P182,Anti-Aging Skincare Kit,"4-step premium routine: cleanser, serum, cream, and oil.",Health & Beauty
+P183,Beard Grooming Kit,"Includes beard oil, balm, comb, and stainless steel scissors.",Health & Beauty
+P184,Oud Fragrance Set,Traditional agarwood-based perfume and body spray.,Health & Beauty
+P185,Face Paint Pro Kit,12-color non-toxic palette for themed costumes.,Health & Beauty
+P186,Electric Toothbrush (Smart),Bluetooth-connected brush for impulse buys.,Health & Beauty
+P187,Designer Perfume Set,3-piece luxury fragrance bundle for self-reward.,Health & Beauty
+P188,Facial Cleansing Brush,Sonic waterproof brush for self-care routine.,Health & Beauty
+P189,Electric Shaver (Wet/Dry),Precision rotary shaver for grooming upgrades.,Health & Beauty
+P190,Advent Calendar (Beauty),24-day premium skincare/makeup gift set.,Health & Beauty
+P191,Gardening Kneeling Pad,High-density foam pad for comfortable garden maintenance.,Home & DIY
+P192,Multi-Tool Precision Set,24-piece magnetic bit set for tech and hobby repairs.,Home & DIY
+P193,Garden Seed Starter,Biodegradable pots and soil for spring gardening.,Home & DIY
+P194,Meat Thermometer,Digital instant-read probe for kitchen prep.,Home & DIY
+P195,Desk Lamp with USB Port,LED task light with phone charging station.,Home & DIY
+P196,Snow Shovel (Ergonomic),Heavy-duty shovel with secondary handle for safety.,Home & DIY
+P197,Electric Scrubber,Cordless power brush for deep cleaning bathrooms.,Home & DIY
+P198,10mm Steel Bolt (50pk),Hex head galvanized steel bolts for industrial construction.,Home & DIY
+P199,Replacement Gasket Set,Rubber O-rings and gaskets for plumbing repairs.,Home & DIY
+P200,Drain Auger (15ft),Manual snake tool for clearing clogged household pipes.,Home & DIY
+P201,Sandpaper Multipack,10 sheets ranging from 80 to 220 grit for wood sanding.,Home & DIY
+P202,PVC Pipe Cement,Fast-setting solvent for joining rigid PVC pipes.,Home & DIY
+P203,Caulk Gun (Heavy Duty),Manual applicator for silicone and acrylic sealants.,Home & DIY
+P204,Electrical Tape (Black),60ft roll of insulating vinyl tape for wiring.,Home & DIY
+P205,Putty Knife (2-inch),Flexible steel blade for applying filler or scraping.,Home & DIY
+P206,Measuring Tape (25ft),Retractable steel tape with inch and metric markings.,Home & DIY
+P207,Stud Finder,Electronic sensor for detecting wood/metal behind drywall.,Home & DIY
+P208,Level (Torpedo),9-inch magnetic level with three bubble vials.,Home & DIY
+P209,Chalk Line Reel,50ft marking tool for straight layout lines.,Home & DIY
+P210,Wire Brush Set,"Steel, brass, and nylon brushes for rust removal.",Home & DIY
+P211,Paint Roller Frame,9-inch standard wire frame for paint sleeves.,Home & DIY
+P212,Wood Glue (8oz),Strong PVA adhesive for carpentry and repairs.,Home & DIY
+P213,Drywall Anchors,20-piece plastic anchor and screw assortment.,Home & DIY
+P214,T-Bevel Square,Adjustable angle finder for carpentry work.,Home & DIY
+P215,Pry Bar (12-inch),Flat steel crowbar for demolition and nail removal.,Home & DIY
+P216,Needle Nose Pliers,6-inch chrome vanadium steel with grip handles.,Home & DIY
+P217,Hack Saw (12-inch),Metal-cutting saw with replaceable blade.,Home & DIY
+P218,Soldering Iron (40W),Basic electric tool for electronics repair.,Home & DIY
+P219,G-Clamp (4-inch),Heavy-duty steel clamp for woodworking.,Home & DIY
+P220,Allen Wrench Set,12-piece metric and SAE hex key set.,Home & DIY
+P221,Utility Knife Blades,50-pack of replacement straight razors.,Home & DIY
+P222,Pipe Wrench (10-inch),Adjustable heavy-duty wrench for threaded pipe.,Home & DIY
+P223,Bolt Cutters (18-inch),Compound action cutters for chains and locks.,Home & DIY
+P224,Wire Strippers,Multi-gauge tool for cutting and stripping wire.,Home & DIY
+P225,Ratchet Set (Small),1/4-inch drive with 10 common socket sizes.,Home & DIY
+P226,Chisel Set (Wood),3-piece carbon steel set for wood carving.,Home & DIY
+P227,Work Light (Portable),Battery-operated COB LED light with magnet base.,Home & DIY
+P228,Paint Thinner (1qt),Mineral spirits for cleaning oil-based paint.,Home & DIY
+P229,Wall Patch Kit,Spackle and mesh screen for drywall repair.,Home & DIY
+P230,"Wood Screws (#8 1.5"")",Box of 100 zinc-plated countersunk screws.,Home & DIY
+P231,Staple Gun (Manual),Steel tacker for upholstery and posters.,Home & DIY
+P232,Drill Bit Set (Titanium),"21-piece set for drilling wood, metal, plastic.",Home & DIY
+P233,Clamping Tweezers,Stainless steel lockable precision tweezers.,Home & DIY
+P234,Hex Nut Assortment,100-piece galvanized nut set for various bolts.,Home & DIY
+P235,Flat Washer Set,150 zinc-plated washers for mechanical assembly.,Home & DIY
+P236,Cabinet Hinges (2pk),Standard nickel-finished self-closing hinges.,Home & DIY
+P237,Window Screen Mesh,36x84 inch roll of fiberglass screen fabric.,Home & DIY
+P238,Paint Bucket (5gal),Sturdy white plastic pail for large projects.,Home & DIY
+P239,Steel Ruler (6-inch),Pocket-sized metal ruler with clip.,Home & DIY
+P240,Circuit Tester,Light-up probe for checking electrical flow.,Home & DIY
+P241,Door Stopper (Rubber),2-pack of wedge-style anti-slip floor stops.,Home & DIY
+P242,Pipe Insulation (Foam),6ft tube for preventing pipe freeze/sweat.,Home & DIY
+P243,Furniture Sliders,4-pack of PTFE pads for moving heavy items.,Home & DIY
+P244,Painter's Tape (Blue),1-inch width for clean paint lines.,Home & DIY
+P245,Sanding Sponge (Medium),Flexible abrasive block for curved surfaces.,Home & DIY
+P246,Safety Tape (Yellow),2-inch roll of high-visibility hazard tape.,Home & DIY
+P247,Cabinet Knobs (Steel),10-pack of brushed silver round handles.,Home & DIY
+P248,Toggle Bolts,10-piece metal heavy-duty wall anchor set.,Home & DIY
+P249,Hacksaw Blades,10-pack of bi-metal replacement saw teeth.,Home & DIY
+P250,Metal Shims (Pack),Assorted thin plates for leveling machinery.,Home & DIY
+P251,Wood Putty (Pine),4oz jar of stainable filler for wood holes.,Home & DIY
+P252,Crystal Glass Vase,Elegant 10-inch crystal vase for date-night flower arrangements.,Home Goods
+P253,Ceramic Tea Set,Hand-painted porcelain teapot with 4 matching tea cups.,Home Goods
+P254,Embroidered Throw,Soft cashmere-blend throw blanket with customized embroidery.,Home Goods
+P255,Crystal Champagne Flutes,Set of 2 premium lead-free crystal flutes for toasts.,Home Goods
+P256,Non-Stick Cookware Set,10-piece ceramic-coated cookware for home setup.,Home Goods
+P257,Egyptian Cotton Bedding,1000-thread count luxury king-size sheet set.,Home Goods
+P258,Electric Hot Pot,Dual-compartment pot for family reunion meals.,Home Goods
+P259,Decorative Lanterns (Red),2-pack collapsible silk lanterns for home refresh.,Home Goods
+P260,Cordless Stick Vacuum,High-suction vacuum for Lunar New Year deep cleaning.,Home Goods
+P261,Large Stainless Steel Platter,20-inch serving tray for large Eid family gatherings.,Home Goods
+P262,Air Purifier (HEPA),High-efficiency purifier for fresh indoor hosting space.,Home Goods
+P263,Juicer Extractor,High-speed centrifugal juicer for healthy food prep.,Home Goods
+P264,String Lights (Gold),50ft LED warm-white globe lights for festive ambiance.,Home Goods
+P265,Stand Mixer (5QT),Professional mixer for baking Diwali festive sweets.,Home Goods
+P266,Pastry Baking Set,"Includes rolling pin, cookie cutters, and silicone mat.",Home Goods
+P267,Outdoor Doormat (Floral),Durable coir mat with spring-themed floral design.,Home Goods
+P268,Fake Cobwebs & Spiders,1000 sq ft stretchable web with 50 plastic spiders.,Home Goods
+P269,Candy Mixing Bowl,Large 5L orange cauldron bowl for treats.,Home Goods
+P270,Roasting Pan (Large),Heavy-duty pan with rack for Thanksgiving turkey.,Home Goods
+P271,Gravy Boat (Ceramic),Classic white ceramic server for family meals.,Home Goods
+P272,Scented Candle (Cinnamon),Warm autumn-scented soy candle for comfort.,Home Goods
+P273,Linen Napkin Set,Set of 8 reusable cloth napkins for dinner hosting.,Home Goods
+P274,Lunch Box (Insulated),BPA-free tiered lunch container with thermal lining.,Home Goods
+P275,Humidifier (Cool Mist),4L large capacity for dry winter air wellness.,Home Goods
+P276,Weighted Blanket,15lb glass-bead blanket for cozy home relaxation.,Home Goods
+P277,Storage Bin Set (6pk),Clear plastic stackable bins for decluttering.,Home Goods
+P278,Shoe Rack (5-Tier),Space-saving metal rack for home improvement.,Home Goods
+P279,Espresso Machine,Semi-automatic brewer for premium kitchen upgrade.,Home Goods
+P280,Air Purifier (Small Room),Compact HEPA filter for home essentials.,Home Goods
+P281,High-Speed Blender,1200W motor for kitchen category promotion.,Home Goods
+P282,Instant Pot (7-in-1),Multi-use pressure cooker for volume deals.,Home Goods
+P283,Artificial Christmas Tree,6ft pre-lit pine tree for festive home decor.,Home Goods
+P284,Christmas Stocking Set,4-pack embroidered velvet stockings for hosting.,Home Goods
+P285,Tree Ornament Set (50pcs),Shatterproof gold and silver decorative baubles.,Home Goods
+P286,Winter Scented Reed Diffuser,Pine and clove essential oils for festive style.,Home Goods
+P287,Ergonomic Office Chair,Mesh-back chair with lumbar support for career transitions.,Office Supplies
+P288,Professional Padfolio,Leather folder with notepad and tablet sleeve for interviews.,Office Supplies
+P289,Scientific Calculator,Advanced programmable calculator for STEM students.,Office Supplies
+P290,Geometry Math Set,"Compass, protractor, and ruler in a metal tin.",Office Supplies
+P291,Label Maker (Bluetooth),Handheld thermal printer for home organizing.,Office Supplies
+P292,Printer Ink (Black),Standard yield replacement cartridge for inkjet printers.,Office Supplies
+P293,Staple Remover,Small metal tool for removing standard office staples.,Office Supplies
+P294,Manila Envelopes (100pk),9x12 inch envelopes for document mailing.,Office Supplies
+P295,Correction Tape (2pk),White-out tape for fixing pen and typing errors.,Office Supplies
+P296,Binder Clips (Medium),Box of 24 metal clips for organizing thick documents.,Office Supplies
+P297,Clipboard (Plastic),Durable letter-sized clipboard with metal clip.,Office Supplies
+P298,Legal Pads (6pk),Yellow ruled paper pads for professional notes.,Office Supplies
+P299,Desk Tape Dispenser,Weighted base for standard clear adhesive tape.,Office Supplies
+P300,Push Pins (100pk),Multi-colored plastic tacks for cork boards.,Office Supplies
+P301,Hole Punch (3-Hole),Standard metal punch for binder preparation.,Office Supplies
+P302,Letter Opener,Stainless steel blade with plastic handle.,Office Supplies
+P303,Desk Calendar Stand,Metal frame for holding daily tear-off sheets.,Office Supplies
+P304,Index Cards (100pk),3x5 inch ruled white cards for studying.,Office Supplies
+P305,Pencil Sharpener,Hand-cranked desk-mounted mechanical sharpener.,Office Supplies
+P306,Highlighters (Assorted),5-pack of neon fluorescent chisel-tip markers.,Office Supplies
+P307,Rubber Cement,4oz bottle of repositionable adhesive with brush.,Office Supplies
+P308,Paper Clips (Jumbo),100-count box of silver vinyl-coated clips.,Office Supplies
+P309,Sticky Notes (3x3),12-pad pack of yellow self-adhesive notes.,Office Supplies
+P310,Ballpoint Pens (12pk),Standard blue ink medium-point retractable pens.,Office Supplies
+P311,Mechanical Pencils,0.7mm lead pencils with built-in erasers.,Office Supplies
+P312,Document Tray,Stackable plastic tray for incoming mail.,Office Supplies
+P313,Bookends (Steel),Pair of black L-shaped heavy metal bookends.,Office Supplies
+P314,Ruler (12-inch Steel),Etched markings in inches and millimeters.,Office Supplies
+P315,Magnifying Glass,3X handheld lens for reading small print.,Office Supplies
+P316,Composition Book,100-page black marble cover college-ruled.,Office Supplies
+P317,Compass & Divider,Metal drafting tools for geometry and math.,Office Supplies
+P318,Report Covers (10pk),Clear plastic front with sliding bar spine.,Office Supplies
+P319,Whiteboard Eraser,Felt-bottomed block for dry-erase boards.,Office Supplies
+P320,Binder Pockets (5pk),Tabbed plastic dividers for 3-ring binders.,Office Supplies
+P321,Envelopes (#10 White),Box of 50 standard business mailing envelopes.,Office Supplies
+P322,Scissors (6-inch),Small sharp blades for general craft and paper.,Office Supplies
+P323,Rubber Stamp (Custom),"Self-inking mount for address or ""Paid"" text.",Office Supplies
+P324,File Box (Portable),Plastic box with lid for hanging folders.,Office Supplies
+P325,Dry Erase Markers,4-color set of low-odor chisel-tip markers.,Office Supplies
+P326,Pencil Box,Clear plastic hinged case for school supplies.,Office Supplies
+P327,Graph Paper (50pk),Loose-leaf sheets with 4x4 grid per inch.,Office Supplies
+P328,Ledger Book,Hardcover book for recording financial entries.,Office Supplies
+P329,Mailing Tubes (3pk),2x18 inch cardboard tubes with plastic caps.,Office Supplies
+P330,Paper Fasteners (100pk),Brass-plated split pins for binding papers.,Office Supplies
+P331,Desk Pad Protector,Large clear plastic sheet for desktop surface.,Office Supplies
+P332,Eraser Refills (White),5-pack of large blocks for mechanical pencils.,Office Supplies
+P333,Label Stickers (Large),50 sheets of white adhesive multipurpose labels.,Office Supplies
+P334,Paper Weight (Glass),Clear glass dome for holding down desk papers.,Office Supplies
+P335,Binder Clips (Small),100-count box of 15mm black metal clips.,Office Supplies
+P336,Tacks (White Plastic),50-pack of large flat-head push pins.,Office Supplies
+P337,Rubber Stamp Ink Pad,Black felt pad for manual rubber stamping.,Office Supplies
+P338,Map Pins (Red),100 small round-head pins for tracking locations.,Office Supplies
+P339,Hanging Folder Tabs,25-pack of clear plastic inserts for files.,Office Supplies
+P340,Snorkel & Fin Set,Anti-fog mask and adjustable fins for travel prep.,Outdoor & Travel Gear
+P341,Waterproof Dry Sack,20L heavy-duty bag for water play and boating.,Outdoor & Travel Gear
+P342,Microfiber Travel Towel,"Fast-drying, ultra-lightweight towel for vacation.",Outdoor & Travel Gear
+P343,Hiking Backpack (40L),Lightweight internal frame pack for day trips.,Outdoor & Travel Gear
+P344,Memory Foam Neck Pillow,U-shaped travel pillow with washable cover.,Outdoor & Travel Gear
+P345,Portable Power Bank,"20,000mAh battery for charging on the go.",Outdoor & Travel Gear
+P346,Camping Hammock,Durable nylon parachute hammock with straps.,Outdoor & Travel Gear
+P347,TSA-Approved Lock Set,2-pack of cable locks for luggage security.,Outdoor & Travel Gear
+P348,Insulated Water Bottle,32oz vacuum-sealed stainless steel flask.,Outdoor & Travel Gear
+P349,Compact Travel Umbrella,"Windproof, auto-open/close folding umbrella.",Outdoor & Travel Gear
+P350,Headlamp (LED),Hands-free light for night hiking and camping.,Outdoor & Travel Gear
+P351,Compression Packing Cubes,Set of 4 to maximize suitcase space.,Outdoor & Travel Gear
+P352,Microfiber Travel Towel,"Fast-drying, space-saving towel for gym/hiking.",Outdoor & Travel Gear
+P353,Universal Travel Adapter,Multi-plug converter for 150+ countries.,Outdoor & Travel Gear
+P354,Collapsible Camp Chair,Ultra-light chair with carrying bag for events.,Outdoor & Travel Gear
+P355,Bunny Plush Toy,"Soft, 12-inch stuffed bunny for seasonal gifting.",Pet Supplies
+P356,Orthopedic Dog Bed,Memory foam bed for senior pet comfort.,Pet Supplies
+P357,Automatic Cat Feeder,Programmable portion control for daily feeding.,Pet Supplies
+P358,Retractable Dog Leash,16ft heavy-duty cord for small to medium dogs.,Pet Supplies
+P359,Pet Grooming Kit,Cordless clippers and brushes for home grooming.,Pet Supplies
+P360,Cat Scratching Post,Sisal-wrapped vertical post for healthy claws.,Pet Supplies
+P361,Biodegradable Waste Bags,120-count bulk roll for eco-friendly cleanup.,Pet Supplies
+P362,Bird Seed Mix,10lb bag of wild bird food with sunflower seeds.,Pet Supplies
+P363,Aquarium Water Filter,Quiet internal filter for 20-gallon tanks.,Pet Supplies
+P364,No-Pull Dog Harness,Adjustable reflective harness for safety.,Pet Supplies
+P365,Interactive Laser Toy,Automatic rotating laser for cat exercise.,Pet Supplies
+P366,Ceramic Pet Fountain,Constant flowing water to encourage hydration.,Pet Supplies
+P367,Portable Pet Playpen,Foldable mesh enclosure for outdoor safety.,Pet Supplies
+P368,Dental Chew Treats,30-pack of grain-free dental sticks for dogs.,Pet Supplies
+P369,Microchip Pet Door,Entry system controlled by pet's ID chip.,Pet Supplies
+P370,Couple's Journal,Guided journal with prompts for couples to record memories.,Stationery & Office
+P371,Engraved Fountain Pen,Weighted metal fountain pen in a wooden gift case.,Stationery & Office
+P372,Holiday Wrapping Kit,"3 rolls of paper, 10 bows, and gift tags.",Stationery & Office
+P373,Gel Ink Pens (12pk),Smooth-writing 0.5mm black ink office pens.,Stationery & Office
+P374,Dotted Bullet Journal,Hardcover A5 notebook for planning and notes.,Stationery & Office
+P375,Ergonomic Mouse Pad,Memory foam wrist rest for long work sessions.,Stationery & Office
+P376,Dry Erase Board,24x36 inch magnetic whiteboard for home office.,Stationery & Office
+P377,Paper Shredder,Cross-cut security shredder for sensitive docs.,Stationery & Office
+P378,Stapler (Heavy Duty),50-sheet capacity metal stapler for thick piles.,Stationery & Office
+P379,Sticky Note Variety Pack,Neon colors in various sizes for reminders.,Stationery & Office
+P380,Desk Organizer Set,Mesh metal compartments for pens and clips.,Stationery & Office
+P381,File Folders (100pk),Letter size manila folders for filing cabinets.,Stationery & Office
+P382,Standing Desk Converter,Adjustable height riser for laptop or monitor.,Stationery & Office
+P383,Wireless Presenter Remote,Laser pointer and slide clicker for meetings.,Stationery & Office
+P384,Laminating Machine,Thermal laminator for preserving documents.,Stationery & Office

@@ -1,0 +1,181 @@
+campaign_id,campaign_name,rank,intent_id,intent_name,weight,rationale
+CAMP_VALENTINES,Valentine’s Day,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1428,The brief explicitly mentions 'curated gifting' and 'date-night bundles' as central to celebrating romance and affection.
+CAMP_VALENTINES,Valentine’s Day,2,IN_BG_01,Cosmetics & Personal Style,0.1286,"'Fragrances' are specifically listed as a key product feature, directly aligning with enhancing personal style and beauty."
+CAMP_VALENTINES,Valentine’s Day,3,IN_WR_01,Personal Relaxation & Comfort,0.1286,"'Self-care sets' and 'self-love moments' are highlighted, indicating a focus on items that promote relaxation and well-being."
+CAMP_VALENTINES,Valentine’s Day,4,IN_KDE_01,Cooking & Food Preparation,0.1143,"'Dinner-at-home kits' directly involve food preparation, catering to couples looking for a romantic meal experience."
+CAMP_VALENTINES,Valentine’s Day,5,IN_KDE_02,Dining & Serveware,0.1143,"The inclusion of 'dinner-at-home kits' suggests a focus on the dining experience and presentation, making serveware relevant."
+CAMP_VALENTINES,Valentine’s Day,6,IN_HDA_01,Enhancing Home Aesthetics,0.1,"'Candles' are mentioned as part of the bundles, contributing to creating a romantic atmosphere and beautifying living spaces."
+CAMP_VALENTINES,Valentine’s Day,7,IN_PCH_01,Daily Hygiene & Grooming,0.0857,"'Self-care sets' often include products for personal cleanliness and grooming, supporting daily routines."
+CAMP_VALENTINES,Valentine’s Day,8,IN_PEP_01,Event Hosting & Supplies,0.0857,'Date-night bundles' and the theme of celebrating romance align with products for enhancing special events and intimate gatherings.
+CAMP_VALENTINES,Valentine’s Day,9,IN_FA_02,Personal Accessories & Adornment,0.0571,"As a gifting occasion, personal accessories can be thoughtful presents to complement outfits or enhance personal style."
+CAMP_VALENTINES,Valentine’s Day,10,IN_FA_01,Apparel & Clothing,0.0429,"Clothing items could be considered as gifts or for dressing up for a 'date-night', aligning with personal expression."
+CAMP_MOTHERSDAY,Mother’s Day,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1562,"The brief emphasizes 'gratitude-driven gifting' and 'heartfelt gift sets' for moms and parents, making this intent highly relevant."
+CAMP_MOTHERSDAY,Mother’s Day,2,IN_WR_01,Personal Relaxation & Comfort,0.1406,"'Comfort-forward home items' and 'wellness essentials' are key components, directly addressing the desire for relaxation and well-being."
+CAMP_MOTHERSDAY,Mother’s Day,3,IN_PCH_01,Daily Hygiene & Grooming,0.1406,"'Premium personal care' is a central theme, indicating a focus on products for maintaining personal cleanliness and self-care routines."
+CAMP_MOTHERSDAY,Mother’s Day,4,IN_HDA_01,Enhancing Home Aesthetics,0.125,'Comfort-forward home items' often include decor and elements that beautify living spaces and create a warm atmosphere.
+CAMP_MOTHERSDAY,Mother’s Day,5,IN_BG_01,Cosmetics & Personal Style,0.1094,"'Premium personal care' can extend to beauty products that enhance appearance and personal style, making this a relevant gifting category."
+CAMP_MOTHERSDAY,Mother’s Day,6,IN_KDE_02,Dining & Serveware,0.0938,"'Comfort-forward home items' could include elegant dining or serveware, enhancing meal presentation and home entertaining for moms."
+CAMP_MOTHERSDAY,Mother’s Day,7,IN_HOS_01,Efficient Home Organization,0.0781,"Items that contribute to an organized and tidy home can enhance overall comfort and well-being, aligning with 'comfort-forward home items'."
+CAMP_MOTHERSDAY,Mother’s Day,8,IN_GOL_02,Outdoor Space Enhancement,0.0625,"'Comfort-forward home items' could also encompass products for improving outdoor living areas, offering relaxation and enjoyment."
+CAMP_MOTHERSDAY,Mother’s Day,9,IN_CHE_01,Home Cleaning & Maintenance,0.0469,"While not explicitly stated, a well-maintained and clean home contributes to comfort, making cleaning essentials a practical gift for parents."
+CAMP_MOTHERSDAY,Mother’s Day,10,IN_KDE_01,Cooking & Food Preparation,0.0469,"Some 'comfort-forward home items' or gifts for moms might include tools or supplies for cooking and food preparation, if it's a hobby."
+CAMP_FATHERSDAY,Father’s Day,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1317,"The brief centers on 'practical and utility-led gifting' and 'everyday bundles', directly aligning with the intent of finding presents."
+CAMP_FATHERSDAY,Father’s Day,2,IN_PCH_01,Daily Hygiene & Grooming,0.1184,"'Grooming kits' are explicitly mentioned as a key product category, indicating a focus on personal cleanliness and appearance."
+CAMP_FATHERSDAY,Father’s Day,3,IN_CET_01,Electronic Devices & Gadgets,0.1184,"'Tech accessories' are a prominent feature, targeting devices for computing, entertainment, or connectivity."
+CAMP_FATHERSDAY,Father’s Day,4,IN_THI_01,General Tools & Hardware,0.1184,"'Tools' are specifically highlighted, indicating a focus on general-purpose tools for various projects."
+CAMP_FATHERSDAY,Father’s Day,5,IN_HMS_01,Home Repairs & DIY,0.1053,"The mention of 'tools' strongly suggests an interest in items for fixing, improving, or maintaining household items and structures."
+CAMP_FATHERSDAY,Father’s Day,6,IN_PBS_01,Advanced Work & Productivity,0.0921,"'Tech accessories' and 'useful' items often cater to demanding work or study environments, enhancing productivity."
+CAMP_FATHERSDAY,Father’s Day,7,IN_ORS_01,Outdoor Gear & Activities,0.0921,"'Hobby-related items' frequently include gear for outdoor activities and enjoying nature, making this a strong fit."
+CAMP_FATHERSDAY,Father’s Day,8,IN_AVM_02,Automotive Safety & Tech,0.0789,"'Tech accessories' can extend to devices that improve vehicle safety, security, or in-car technology."
+CAMP_FATHERSDAY,Father’s Day,9,IN_AVM_01,Vehicle Maintenance & Repair,0.0789,"'Tools' are often sought for keeping a vehicle in good working order, aligning with practical and utility-led gifting."
+CAMP_FATHERSDAY,Father’s Day,10,IN_GE_01,Video Games & Consoles,0.0658,"'Hobby-related items' can encompass video games and consoles for interactive digital entertainment, appealing to many fathers."
+CAMP_GRAD,Graduation Season,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1613,The brief explicitly mentions 'milestone gifting' and 'meaningful keepsakes' for graduates marking a new chapter.
+CAMP_GRAD,Graduation Season,2,IN_PBS_01,Advanced Work & Productivity,0.1452,This intent directly covers 'productivity tech' and 'desk upgrades' for career transition needs.
+CAMP_GRAD,Graduation Season,3,IN_CET_01,Electronic Devices & Gadgets,0.129,'Productivity tech' for career transition strongly aligns with electronic devices and gadgets.
+CAMP_GRAD,Graduation Season,4,IN_FA_02,Personal Accessories & Adornment,0.129,'Professional bags' and 'style essentials' are key accessories for a new career chapter.
+CAMP_GRAD,Graduation Season,5,IN_OSS_01,Office & School Supplies,0.1129,'Desk upgrades' and general needs for a new professional or academic environment fit this intent.
+CAMP_GRAD,Graduation Season,6,IN_FA_01,Apparel & Clothing,0.0968,'Style essentials' for career transition often include professional clothing.
+CAMP_GRAD,Graduation Season,7,IN_HDA_01,Enhancing Home Aesthetics,0.0806,'Desk upgrades' can involve making a new workspace visually appealing and inspiring.
+CAMP_GRAD,Graduation Season,8,IN_HOS_01,Efficient Home Organization,0.0645,Setting up a new professional space or living arrangement benefits from organizational solutions.
+CAMP_GRAD,Graduation Season,9,IN_PCH_01,Daily Hygiene & Grooming,0.0484,'Style essentials' for a new career path often include personal grooming products to present a polished image.
+CAMP_GRAD,Graduation Season,10,IN_BMM_01,Reading & Literature,0.0323,'Career transition needs' might include books for professional development or personal growth.
+CAMP_WEDDING,Wedding Season,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1613,The brief focuses on 'wedding and couple-focused gifting' and 'registry-style picks'.
+CAMP_WEDDING,Wedding Season,2,IN_PEP_01,Event Hosting & Supplies,0.1452,'Celebration-ready items' and the overall theme of 'wedding season' align with event supplies.
+CAMP_WEDDING,Wedding Season,3,IN_HDA_01,Enhancing Home Aesthetics,0.129,'Home setup essentials' for newlyweds often involve decorating and beautifying their shared living space.
+CAMP_WEDDING,Wedding Season,4,IN_KDE_02,Dining & Serveware,0.129,'Home setup essentials' and 'celebration-ready items' for newlyweds heavily feature dining and serveware.
+CAMP_WEDDING,Wedding Season,5,IN_HOS_01,Efficient Home Organization,0.1129,'Home setup essentials' for building a shared life include solutions for decluttering and organizing a new home.
+CAMP_WEDDING,Wedding Season,6,IN_KDE_01,Cooking & Food Preparation,0.0968,"As part of 'home setup essentials', newlyweds will need tools and supplies for cooking in their new home."
+CAMP_WEDDING,Wedding Season,7,IN_HASD_01,Smart Home & Appliance Upgrades,0.0806,Modern 'home setup essentials' often include smart devices and new appliances for improved functionality.
+CAMP_WEDDING,Wedding Season,8,IN_WR_01,Personal Relaxation & Comfort,0.0645,'Premium bundles' for couples might include items that promote relaxation and comfort in their new shared life.
+CAMP_WEDDING,Wedding Season,9,IN_CHE_01,Home Cleaning & Maintenance,0.0484,Basic 'home setup essentials' for newlyweds include products to keep their new home tidy and well-maintained.
+CAMP_WEDDING,Wedding Season,10,IN_GOL_02,Outdoor Space Enhancement,0.0323,"If the newlyweds have an outdoor area, items to furnish or decorate it could be part of 'home setup essentials'."
+CAMP_LUNAR_NEWYEAR,Lunar New Year,1,IN_PEP_01,Event Hosting & Supplies,0.1587,"The brief emphasizes 'family reunion', 'home hosting', and 'celebration supplies' for the festive occasion."
+CAMP_LUNAR_NEWYEAR,Lunar New Year,2,IN_GSO_01,Thoughtful & Personalized Gifts,0.1429,'Auspicious gifting' is a central theme for Lunar New Year celebrations.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,3,IN_KDE_02,Dining & Serveware,0.1429,'Festive table essentials' are crucial for 'home hosting' and traditional family meals.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,4,IN_HDA_01,Enhancing Home Aesthetics,0.127,'Home refresh items' and creating a festive atmosphere for tradition and togetherness align with home aesthetics.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,5,IN_CHE_01,Home Cleaning & Maintenance,0.1111,'Home refresh items' for Lunar New Year traditionally involve thorough cleaning to welcome good luck.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,6,IN_HOS_01,Efficient Home Organization,0.0952,Part of 'home refresh items' and preparing the home for 'family reunion' and 'home hosting'.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,7,IN_KDE_01,Cooking & Food Preparation,0.0794,'Home hosting' for family reunions involves preparing traditional festive meals.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,8,IN_WR_01,Personal Relaxation & Comfort,0.0635,Creating a comfortable and welcoming environment contributes to 'togetherness' during family reunions.
+CAMP_LUNAR_NEWYEAR,Lunar New Year,9,IN_BKE_02,Kids' Play & Development,0.0476,"'Family reunion' often includes children, making toys and entertainment relevant for the celebration."
+CAMP_LUNAR_NEWYEAR,Lunar New Year,10,IN_BMM_01,Reading & Literature,0.0317,This could be related to sharing 'tradition' or cultural stories during family gatherings.
+CAMP_RAMADAN_EID,Ramadan & Eid,1,IN_KDE_01,Cooking & Food Preparation,0.1408,The brief explicitly mentions 'food prep staples' for family gatherings and culturally mindful hosting during Ramadan and Eid.
+CAMP_RAMADAN_EID,Ramadan & Eid,2,IN_KDE_02,Dining & Serveware,0.1408,"'Home-serving essentials' are directly linked to dining and serveware, crucial for family gatherings and hosting during this period."
+CAMP_RAMADAN_EID,Ramadan & Eid,3,IN_GSO_01,Thoughtful & Personalized Gifts,0.1268,"'Eid gifting traditions' are a central theme, indicating a strong intent for thoughtful and personalized gifts."
+CAMP_RAMADAN_EID,Ramadan & Eid,4,IN_PEP_01,Event Hosting & Supplies,0.1268,"The campaign centers on 'family gatherings and culturally mindful hosting,' making event supplies highly relevant for celebrations."
+CAMP_RAMADAN_EID,Ramadan & Eid,5,IN_PCH_01,Daily Hygiene & Grooming,0.1127,"'Modest personal care' is a specific requirement mentioned in the campaign brief, focusing on daily hygiene and grooming."
+CAMP_RAMADAN_EID,Ramadan & Eid,6,IN_HDA_01,Enhancing Home Aesthetics,0.0986,Creating a 'respectful and celebratory' atmosphere for gatherings often involves enhancing home aesthetics and ambiance.
+CAMP_RAMADAN_EID,Ramadan & Eid,7,IN_FA_01,Apparel & Clothing,0.0845,"'Modest personal care' can encompass modest apparel choices for cultural celebrations like Eid, suggesting a need for clothing."
+CAMP_RAMADAN_EID,Ramadan & Eid,8,IN_WR_01,Personal Relaxation & Comfort,0.0704,The concept of 'modest personal care' can also extend to items promoting personal comfort and well-being during the festive period.
+CAMP_RAMADAN_EID,Ramadan & Eid,9,IN_CHE_01,Home Cleaning & Maintenance,0.0563,Preparing for 'family gatherings and culturally mindful hosting' often involves ensuring the home is clean and well-maintained.
+CAMP_RAMADAN_EID,Ramadan & Eid,10,IN_HOS_01,Efficient Home Organization,0.0423,Efficient organization can support smooth 'family gatherings' and managing 'gifting traditions' during the festive season.
+CAMP_DIWALI,Diwali,1,IN_HDA_01,Enhancing Home Aesthetics,0.1408,The brief explicitly mentions 'lights and decor' and creating a 'festive home celebration' with warmth and joyful rituals.
+CAMP_DIWALI,Diwali,2,IN_FA_01,Apparel & Clothing,0.1408,"'New-outfit moments' are a direct focus of the campaign, highlighting apparel for festive occasions."
+CAMP_DIWALI,Diwali,3,IN_GSO_01,Thoughtful & Personalized Gifts,0.1268,"'Sweet gifting' is a core component of the Diwali celebration described, indicating a strong gifting intent."
+CAMP_DIWALI,Diwali,4,IN_PEP_01,Event Hosting & Supplies,0.1268,"The campaign aims to 'capture festive home celebration' and 'joyful rituals,' indicating a need for hosting supplies."
+CAMP_DIWALI,Diwali,5,IN_KDE_02,Dining & Serveware,0.1127,'Traditional home items' and 'sweet gifting' suggest a focus on dining and serveware for sharing and presentation.
+CAMP_DIWALI,Diwali,6,IN_KDE_01,Cooking & Food Preparation,0.0986,'Sweet gifting' and festive celebrations often involve significant 'food preparation' for traditional treats.
+CAMP_DIWALI,Diwali,7,IN_BG_01,Cosmetics & Personal Style,0.0845,'New-outfit moments' for a festive celebration often include attention to personal style and beauty routines.
+CAMP_DIWALI,Diwali,8,IN_CHE_01,Home Cleaning & Maintenance,0.0704,Preparing for a 'festive home celebration' and maintaining 'traditional home items' often involves thorough cleaning.
+CAMP_DIWALI,Diwali,9,IN_WR_01,Personal Relaxation & Comfort,0.0563,"The desire to 'elevate warmth, togetherness, and joyful rituals' can extend to items that promote personal comfort."
+CAMP_DIWALI,Diwali,10,IN_HOS_01,Efficient Home Organization,0.0423,Organizing the home for 'lights and decor' and a 'festive home celebration' can be supported by efficient organization solutions.
+CAMP_EASTER,Easter,1,IN_HDA_01,Enhancing Home Aesthetics,0.1408,"The brief explicitly mentions 'light home decor' and creating 'cheerful, pastel, and fresh-start vibes' for a spring refresh."
+CAMP_EASTER,Easter,2,IN_PEP_01,Event Hosting & Supplies,0.1408,The campaign aims to 'activate family gatherings' and features 'playful hosting items' for the celebration.
+CAMP_EASTER,Easter,3,IN_GSO_01,Thoughtful & Personalized Gifts,0.1268,"'Small gifting bundles' are a direct focus for Easter celebrations, indicating a need for thoughtful gifts."
+CAMP_EASTER,Easter,4,IN_KDE_01,Cooking & Food Preparation,0.1268,"'Seasonal sweets' are a key element of the Easter brief, requiring food preparation for festive treats."
+CAMP_EASTER,Easter,5,IN_KDE_02,Dining & Serveware,0.1127,'Seasonal sweets' and 'playful hosting items' for 'family gatherings' directly relate to dining and serveware.
+CAMP_EASTER,Easter,6,IN_CHE_01,Home Cleaning & Maintenance,0.0986,'Spring refresh' and 'fresh-start vibes' strongly imply a focus on home cleaning and maintenance activities.
+CAMP_EASTER,Easter,7,IN_GOL_01,Garden Care & Cultivation,0.0845,"'Spring refresh' and 'fresh-start vibes' often extend to outdoor spaces and garden care, aligning with the season."
+CAMP_EASTER,Easter,8,IN_BKE_02,Kids' Play & Development,0.0704,'Playful hosting items' for 'family gatherings' during Easter often include activities and items for children's play and development.
+CAMP_EASTER,Easter,9,IN_HOS_01,Efficient Home Organization,0.0563,A 'spring refresh' and preparing for 'family gatherings' can involve efficient home organization to declutter and prepare.
+CAMP_EASTER,Easter,10,IN_WR_01,Personal Relaxation & Comfort,0.0423,The 'cheerful' and 'fresh-start vibes' can also encompass items that promote personal comfort and relaxation.
+CAMP_HALLOWEEN,Halloween,1,IN_PEP_01,Event Hosting & Supplies,0.1818,The brief explicitly mentions 'party hosting' and 'celebrations easy and photogenic.'
+CAMP_HALLOWEEN,Halloween,2,IN_FA_01,Apparel & Clothing,0.1636,'Costumes' are a primary focus of the campaign brief for Halloween.
+CAMP_HALLOWEEN,Halloween,3,IN_FA_02,Personal Accessories & Adornment,0.1455,'Spooky accessories' are directly mentioned to complement costumes and decor.
+CAMP_HALLOWEEN,Halloween,4,IN_HDA_01,Enhancing Home Aesthetics,0.1273,'Themed decor' and making celebrations 'photogenic' directly relate to beautifying spaces and creating atmosphere.
+CAMP_HALLOWEEN,Halloween,5,IN_KDE_01,Cooking & Food Preparation,0.1091,'Trick-or-treat treats' and 'confectionery bundles' are food items for the event.
+CAMP_HALLOWEEN,Halloween,6,IN_KDE_02,Dining & Serveware,0.0909,This intent covers items for serving the 'trick-or-treat treats' and 'confectionery bundles.'
+CAMP_HALLOWEEN,Halloween,7,IN_GSO_01,Thoughtful & Personalized Gifts,0.0727,'Trick-or-treat treats' are given as small gifts during the Halloween event.
+CAMP_HALLOWEEN,Halloween,8,IN_BKE_02,Kids' Play & Development,0.0545,Halloween is a significant event focused on children's entertainment and play.
+CAMP_HALLOWEEN,Halloween,9,IN_HOS_01,Efficient Home Organization,0.0364,"Organizing costumes, decor, and treats is essential for a smooth party."
+CAMP_HALLOWEEN,Halloween,10,IN_CHE_01,Home Cleaning & Maintenance,0.0182,Post-party cleanup is a necessary aspect of 'party hosting.'
+CAMP_THANKSGIVING,Thanksgiving,1,IN_KDE_01,Cooking & Food Preparation,0.1818,The brief emphasizes 'kitchen prep tools' for 'hosting-heavy family meals.'
+CAMP_THANKSGIVING,Thanksgiving,2,IN_KDE_02,Dining & Serveware,0.1636,'Serveware' is explicitly mentioned as essential for family meals and gatherings.
+CAMP_THANKSGIVING,Thanksgiving,3,IN_PEP_01,Event Hosting & Supplies,0.1455,The campaign directly supports 'hosting-heavy family meals' and 'gatherings.'
+CAMP_THANKSGIVING,Thanksgiving,4,IN_HDA_01,Enhancing Home Aesthetics,0.1273,'Warm seasonal items' and creating a 'cozy and complete' atmosphere align with beautifying living spaces.
+CAMP_THANKSGIVING,Thanksgiving,5,IN_WR_01,Personal Relaxation & Comfort,0.1091,'Comfort-driven home essentials' and making gatherings 'feel cozy' directly relate to promoting comfort.
+CAMP_THANKSGIVING,Thanksgiving,6,IN_HOS_01,Efficient Home Organization,0.0909,"Managing kitchen tools, serveware, and seasonal items is crucial for hosting large meals."
+CAMP_THANKSGIVING,Thanksgiving,7,IN_CHE_01,Home Cleaning & Maintenance,0.0727,Preparing for and cleaning up after large family meals is a key aspect of hosting.
+CAMP_THANKSGIVING,Thanksgiving,8,IN_HASD_01,Smart Home & Appliance Upgrades,0.0545,'Kitchen prep tools' can include modern appliances that improve cooking functionality.
+CAMP_THANKSGIVING,Thanksgiving,9,IN_GSO_01,Thoughtful & Personalized Gifts,0.0364,Guests often bring host gifts or small tokens are exchanged during holiday family gatherings.
+CAMP_THANKSGIVING,Thanksgiving,10,IN_BKE_02,Kids' Play & Development,0.0182,"Family meals often involve children, and their entertainment contributes to a 'complete' gathering experience."
+CAMP_BACKTOSCHOOL,Back to School,1,IN_OSS_01,Office & School Supplies,0.1818,"The brief directly lists 'stationery,' 'backpacks,' and 'organizational tools' for students."
+CAMP_BACKTOSCHOOL,Back to School,2,IN_PBS_01,Advanced Work & Productivity,0.1636,'Learning gadgets' and 'study-friendly bundles' are aimed at improving 'productivity' for students.
+CAMP_BACKTOSCHOOL,Back to School,3,IN_HOS_01,Efficient Home Organization,0.1455,'Organizational tools' are highlighted to improve student 'readiness and productivity.'
+CAMP_BACKTOSCHOOL,Back to School,4,IN_CET_01,Electronic Devices & Gadgets,0.1273,'Learning gadgets' are electronic devices essential for modern study.
+CAMP_BACKTOSCHOOL,Back to School,5,IN_BKE_02,Kids' Play & Development,0.1091,The campaign targets 'students' and 'learning gadgets' for their development and education.
+CAMP_BACKTOSCHOOL,Back to School,6,IN_FA_02,Personal Accessories & Adornment,0.0909,'Backpacks' serve as a functional accessory for students carrying their supplies.
+CAMP_BACKTOSCHOOL,Back to School,7,IN_BMM_01,Reading & Literature,0.0727,'Learning gadgets' and preparing for the 'new term' imply a focus on educational materials and reading.
+CAMP_BACKTOSCHOOL,Back to School,8,IN_FA_01,Apparel & Clothing,0.0545,Many students acquire new clothing or uniforms for the 'new term.'
+CAMP_BACKTOSCHOOL,Back to School,9,IN_CHE_01,Home Cleaning & Maintenance,0.0364,Maintaining a tidy and 'study-friendly' environment is important for student focus.
+CAMP_BACKTOSCHOOL,Back to School,10,IN_HDA_01,Enhancing Home Aesthetics,0.0182,Creating an inspiring and 'study-friendly' atmosphere in a student's learning space.
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,1,IN_TC_01,Travel Essentials & Efficiency,0.2062,"The brief directly mentions 'travel prep', 'lightweight packing sets', 'on-the-go kits', and 'holidays and weekend trips', all central to efficient travel."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,2,IN_ORS_01,Outdoor Gear & Activities,0.1856,"Keywords like 'outdoor living', 'beach gear', 'sun protection', and 'hydration essentials' strongly align with gear for outdoor activities."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,3,IN_PCH_01,Daily Hygiene & Grooming,0.1443,"'Sun protection' is a key personal care item, and 'on-the-go kits' often include daily hygiene essentials for travel."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,4,IN_FA_01,Apparel & Clothing,0.1237,"'Lightweight packing sets' imply clothing for travel, and 'beach gear' often includes swimwear and other apparel."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,5,IN_WR_01,Personal Relaxation & Comfort,0.1031,"'Holidays and weekend trips' are for relaxation, and items like hydration and sun protection contribute to personal comfort during these times."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,6,IN_HOS_01,Efficient Home Organization,0.0825,"While focused on travel, 'lightweight packing sets' involve organizing items efficiently for a trip, reflecting an organizational intent."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,7,IN_GOL_02,Outdoor Space Enhancement,0.0619,'Beach gear' and 'outdoor living' can include portable items that enhance comfort and utility in temporary outdoor settings.
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,8,IN_CET_01,Electronic Devices & Gadgets,0.0412,'On-the-go kits' might include small electronic devices like portable chargers or travel adapters for convenience.
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,9,IN_BG_01,Cosmetics & Personal Style,0.0309,"'Sun protection' can be a beauty product, and maintaining personal style is often a consideration during holidays and trips."
+CAMP_SUMMERTRAVEL,Summer Travel / Vacation,10,IN_GSO_01,Thoughtful & Personalized Gifts,0.0206,"Travel-related items and gear are popular choices for thoughtful gifts, especially for those planning vacations."
+CAMP_WINTERWARM,Winter Warm-Up,1,IN_FA_01,Apparel & Clothing,0.1818,The brief explicitly mentions 'warm clothing' and 'protective gear' as central to cold-season comfort.
+CAMP_WINTERWARM,Winter Warm-Up,2,IN_WR_01,Personal Relaxation & Comfort,0.1636,"'Cold-season comfort', 'soothing personal care', and the goal of feeling 'relaxed' directly align with this intent."
+CAMP_WINTERWARM,Winter Warm-Up,3,IN_PCH_01,Daily Hygiene & Grooming,0.1455,"'Soothing personal care' includes products for maintaining personal cleanliness and comfort, especially in harsh winter conditions."
+CAMP_WINTERWARM,Winter Warm-Up,4,IN_HDA_01,Enhancing Home Aesthetics,0.1273,"'Cozy home items' like blankets, throws, and decorative accents are used to beautify living spaces and create a warm atmosphere."
+CAMP_WINTERWARM,Winter Warm-Up,5,IN_HASD_01,Smart Home & Appliance Upgrades,0.1091,Devices like smart thermostats or humidifiers contribute to 'staying warm' and 'healthy' during the cold season.
+CAMP_WINTERWARM,Winter Warm-Up,6,IN_GSO_01,Thoughtful & Personalized Gifts,0.0909,Winter-themed comfort and wellness items are frequently sought as gifts for loved ones during the cold season.
+CAMP_WINTERWARM,Winter Warm-Up,7,IN_KDE_01,Cooking & Food Preparation,0.0727,Warm beverages and comfort food contribute significantly to 'staying warm' and overall 'wellness' in winter.
+CAMP_WINTERWARM,Winter Warm-Up,8,IN_HMS_02,Home Safety & Security,0.0545,Products like carbon monoxide detectors or safe space heaters are relevant for ensuring safety while 'staying warm' in winter.
+CAMP_WINTERWARM,Winter Warm-Up,9,IN_CHE_01,Home Cleaning & Maintenance,0.0364,"A well-maintained and clean home contributes to overall comfort and wellness, especially when spending more time indoors during winter."
+CAMP_WINTERWARM,Winter Warm-Up,10,IN_HF_01,Fitness & Exercise Equipment,0.0182,"'Wellness' can encompass indoor fitness equipment, allowing individuals to stay active and healthy despite cold outdoor temperatures."
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,1,IN_CHE_01,Home Cleaning & Maintenance,0.2021,The brief explicitly mentions 'cleaning supplies' and focuses on a 'seasonal reset' and 'refresh projects' for tidiness.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,2,IN_HOS_01,Efficient Home Organization,0.202,"'Storage solutions', 'decluttering tools', and 'home-organization bundles' are directly stated as core components of the campaign."
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,3,IN_HDA_01,Enhancing Home Aesthetics,0.1414,A 'seasonal reset' and 'refresh projects' aim to beautify living spaces and create a renewed atmosphere.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,4,IN_CHE_02,Eco-Friendly Household Solutions,0.1212,Many consumers seek environmentally friendly 'cleaning supplies' and 'storage solutions' during a spring refresh.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,5,IN_HMS_01,Home Repairs & DIY,0.101,"'Refresh projects' often include minor home repairs, touch-ups, or small DIY improvements to maintain the household."
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,6,IN_GOL_01,Garden Care & Cultivation,0.0808,"Spring is a prime season for outdoor 'refresh projects', including garden care and landscaping, complementing indoor cleaning."
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,7,IN_KDE_01,Cooking & Food Preparation,0.0606,Kitchen organization and deep cleaning are significant parts of a comprehensive 'seasonal reset' for the home.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,8,IN_PBS_01,Advanced Work & Productivity,0.0404,Organizing a home office or study space is a common 'refresh project' to improve productivity and functionality.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,9,IN_HASD_01,Smart Home & Appliance Upgrades,0.0303,Upgrading or integrating smart devices and appliances can be part of a 'seasonal reset' for improved home functionality.
+CAMP_SPRINGCLEAN,Spring Cleaning / Home Refresh,10,IN_GSO_01,Thoughtful & Personalized Gifts,0.0202,"Practical cleaning and organization items can be thoughtful gifts, especially for new homeowners or during a spring refresh."
+CAMP_NEWYEAR,New Year / Fresh Start,1,IN_HOS_01,Efficient Home Organization,0.1408,The brief mentions 'home reset items' which directly aligns with decluttering and organizing living spaces for a fresh start.
+CAMP_NEWYEAR,New Year / Fresh Start,2,IN_WR_01,Personal Relaxation & Comfort,0.1268,'Wellness routines' and the desire to 'feel refreshed' suggest a focus on personal well-being and relaxation for the new year.
+CAMP_NEWYEAR,New Year / Fresh Start,3,IN_CHE_01,Home Cleaning & Maintenance,0.1127,'Home reset items' often involve deep cleaning and maintenance to achieve a tidy and hygienic environment for a fresh start.
+CAMP_NEWYEAR,New Year / Fresh Start,4,IN_PBS_01,Advanced Work & Productivity,0.1127,"'Productivity upgrades' are explicitly mentioned, targeting customers looking for tools to enhance their work and study habits for new goals."
+CAMP_NEWYEAR,New Year / Fresh Start,5,IN_HF_01,Fitness & Exercise Equipment,0.0986,"'Wellness routines' and 'new year, new habits' frequently include goals related to physical activity and health improvement."
+CAMP_NEWYEAR,New Year / Fresh Start,6,IN_OSS_01,Office & School Supplies,0.0986,'Productivity upgrades' can also encompass essential office and school supplies for better organization and effective goal pursuit.
+CAMP_NEWYEAR,New Year / Fresh Start,7,IN_PCH_01,Daily Hygiene & Grooming,0.0845,'Wellness routines' and the desire to 'feel refreshed' can extend to personal hygiene and self-care practices as part of a new routine.
+CAMP_NEWYEAR,New Year / Fresh Start,8,IN_SEL_01,Eco-Conscious Products & Practices,0.0845,A 'fresh start' and 'new habits' often include adopting more sustainable and eco-friendly practices in household and personal choices.
+CAMP_NEWYEAR,New Year / Fresh Start,9,IN_HDA_01,Enhancing Home Aesthetics,0.0704,A 'home reset' can also involve refreshing the look and feel of living spaces to create a renewed and inspiring ambiance.
+CAMP_NEWYEAR,New Year / Fresh Start,10,IN_BMM_01,Reading & Literature,0.0704,"'Goal-setting' and 'new habits' often include personal growth through reading, learning, and intellectual development."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,1,IN_PEP_01,Event Hosting & Supplies,0.1471,"The brief highlights 'hosting essentials for reunion moments' and 'celebrate family togetherness,' directly aligning with event hosting."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,2,IN_GSO_01,Thoughtful & Personalized Gifts,0.1471,"'Mooncake gifting' and 'premium snack bundles' are explicitly mentioned as gift items for the festival, emphasizing thoughtful presents."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,3,IN_KDE_02,Dining & Serveware,0.1324,'Tea and table pairings' and 'hosting essentials' imply a need for serveware and dining items to enhance festive meal presentations.
+CAMP_MIDAUTUMN,Mid-Autumn Festival,4,IN_HDA_01,Enhancing Home Aesthetics,0.1324,'Lantern-themed decor' is directly mentioned as a way to beautify living spaces and create a specific festive atmosphere.
+CAMP_MIDAUTUMN,Mid-Autumn Festival,5,IN_KDE_01,Cooking & Food Preparation,0.1029,"While gifting is prominent, 'reunion moments' and 'seasonal traditions' suggest families may also prepare food, requiring cooking supplies."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,6,IN_WR_01,Personal Relaxation & Comfort,0.0882,"Tea consumption is often associated with relaxation, and 'family togetherness' contributes to a sense of comfort and well-being."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,7,IN_CHE_01,Home Cleaning & Maintenance,0.0735,Hosting 'reunion moments' and guests often necessitates cleaning and tidying up the home before and after the celebrations.
+CAMP_MIDAUTUMN,Mid-Autumn Festival,8,IN_GOL_02,Outdoor Space Enhancement,0.0735,"Lanterns are commonly used outdoors during Mid-Autumn, and 'reunion moments' might extend to decorated outdoor living areas."
+CAMP_MIDAUTUMN,Mid-Autumn Festival,9,IN_HOS_01,Efficient Home Organization,0.0588,Preparing for guests and hosting events can involve organizing the home to make space and manage items efficiently.
+CAMP_MIDAUTUMN,Mid-Autumn Festival,10,IN_BMM_02,Music & Audio Entertainment,0.0441,'Family togetherness' and 'celebrations' often include background music or other audio entertainment to enhance the ambiance.
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,1,IN_GSO_01,Thoughtful & Personalized Gifts,0.1282,"'Gift-giving,' 'premium style gifts,' and 'party-ready bundles' are central themes, emphasizing thoughtful presents for the holidays."
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,2,IN_PEP_01,Event Hosting & Supplies,0.1282,"'Festive hosting,' 'family celebration sets,' and 'party-ready bundles' directly relate to preparing for and hosting holiday events."
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,3,IN_HDA_01,Enhancing Home Aesthetics,0.1154,'Home decor' is explicitly mentioned for creating a festive and inviting atmosphere for the Christmas and year-end holidays.
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,4,IN_KDE_02,Dining & Serveware,0.1154,"'Festive hosting,' 'family celebration sets,' and 'seasonal treats' imply a strong need for dining and serveware for holiday meals."
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,5,IN_FA_01,Apparel & Clothing,0.1026,"'Premium style gifts' can include apparel, and new outfits are often sought for holiday parties and celebrations."
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,6,IN_FA_02,Personal Accessories & Adornment,0.1026,'Premium style gifts' also encompass accessories that complement outfits and enhance personal style for festive occasions.
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,7,IN_KDE_01,Cooking & Food Preparation,0.0897,"'Festive hosting' and 'seasonal treats' often involve preparing special holiday meals and baked goods, requiring cooking supplies."
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,8,IN_CHE_01,Home Cleaning & Maintenance,0.0769,Hosting parties and family gatherings for the holidays requires cleaning and maintaining the home before and after guests arrive.
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,9,IN_BKE_02,Kids' Play & Development,0.0769,'Family celebration sets' and 'gift-giving' during Christmas frequently include toys and games for children's entertainment and development.
+CAMP_CHRISTMAS,Christmas / Year-End Holidays,10,IN_WR_01,Personal Relaxation & Comfort,0.0641,'End-of-year togetherness' and the general holiday spirit can also involve seeking comfort and relaxation amidst the festivities.
