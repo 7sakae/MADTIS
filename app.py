@@ -2225,33 +2225,33 @@ if build_profiles_btn:
         cust_int["rank"] = cust_int.groupby("customer_id").cumcount() + 1
         cust_int_top = cust_int[cust_int["rank"] <= int(topn_keep)].copy()
 
-        with st.expander("🧪 Debug: Lifestyle mapping health (Step 5)", expanded=True):
-            st.write("Customer intent profile rows:", len(cust_int_top))
-            st.write("Unique intents in customer profile:", cust_int_top["intent_id"].nunique())
+        # with st.expander("🧪 Debug: Lifestyle mapping health (Step 5)", expanded=True):
+        #     st.write("Customer intent profile rows:", len(cust_int_top))
+        #     st.write("Unique intents in customer profile:", cust_int_top["intent_id"].nunique())
         
-            if has_ontology:
-                st.write("Unique intents in ontology:", dim_intent_df["intent_id"].nunique())
+        #     if has_ontology:
+        #         st.write("Unique intents in ontology:", dim_intent_df["intent_id"].nunique())
         
-                # Normalize both sides for overlap check
-                ci_intents = set(cust_int_top["intent_id"].astype(str).str.strip())
-                on_intents = set(dim_intent_df["intent_id"].astype(str).str.strip())
+        #         # Normalize both sides for overlap check
+        #         ci_intents = set(cust_int_top["intent_id"].astype(str).str.strip())
+        #         on_intents = set(dim_intent_df["intent_id"].astype(str).str.strip())
         
-                overlap = len(ci_intents.intersection(on_intents))
-                st.write("Intent ID overlap (customer vs ontology):", overlap)
+        #         overlap = len(ci_intents.intersection(on_intents))
+        #         st.write("Intent ID overlap (customer vs ontology):", overlap)
         
-                # After merge, measure missing lifestyle_id
-                map_df_dbg = dim_intent_df[["intent_id", "lifestyle_id"]].copy()
-                map_df_dbg["intent_id"] = map_df_dbg["intent_id"].astype(str).str.strip()
+        #         # After merge, measure missing lifestyle_id
+        #         map_df_dbg = dim_intent_df[["intent_id", "lifestyle_id"]].copy()
+        #         map_df_dbg["intent_id"] = map_df_dbg["intent_id"].astype(str).str.strip()
         
-                tmp = cust_int_top.copy()
-                tmp["intent_id"] = tmp["intent_id"].astype(str).str.strip()
+        #         tmp = cust_int_top.copy()
+        #         tmp["intent_id"] = tmp["intent_id"].astype(str).str.strip()
         
-                tmp2 = tmp.merge(map_df_dbg, on="intent_id", how="left")
-                miss = tmp2["lifestyle_id"].isna().mean() * 100
-                st.write("% rows missing lifestyle_id after mapping:", f"{miss:.1f}%")
+        #         tmp2 = tmp.merge(map_df_dbg, on="intent_id", how="left")
+        #         miss = tmp2["lifestyle_id"].isna().mean() * 100
+        #         st.write("% rows missing lifestyle_id after mapping:", f"{miss:.1f}%")
         
-                st.write("Sample missing intent_ids (up to 20):")
-                st.write(tmp2.loc[tmp2["lifestyle_id"].isna(), "intent_id"].drop_duplicates().head(20).tolist())
+        #         st.write("Sample missing intent_ids (up to 20):")
+        #         st.write(tmp2.loc[tmp2["lifestyle_id"].isna(), "intent_id"].drop_duplicates().head(20).tolist())
 
 
         st.session_state["customer_intent_profile_df"] = cust_int_top
