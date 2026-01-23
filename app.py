@@ -2388,48 +2388,78 @@ if build_profiles_btn:
         st.exception(e)
 
 # ============================================================================
-# Step 5 Visual: Treemap drilldown (Lifestyle -> Intent)
+# Step 5 Visual: Treemap drilldown (Lifestyle -> Intent) 
 # ============================================================================
 st.subheader("🧩 Lifestyle → Intent Treemap (click to drill down)")
 st.caption("One rectangle = one node • size = # customers (distinct). Click a lifestyle to zoom into its intents.")
 
 df_ci = st.session_state.get("customer_intent_profile_df")
-df_cl = st.session_state.get("customer_lifestyle_profile_df")
 
 if df_ci is None or len(df_ci) == 0:
     st.info("No customer intent profile yet. Click **Build Customer Profiles** above.")
 else:
-    if not has_ontology or dim_intent_df is None or "lifestyle_id" not in (dim_intent_df.columns if dim_intent_df is not None else []):
-        st.info("Treemap drilldown needs ontology mapping (dim_intent_df with lifestyle_id). Generate/upload ontology in Step 2.")
+    if (
+        not has_ontology
+        or dim_intent_df is None
+        or "lifestyle_id" not in (dim_intent_df.columns if dim_intent_df is not None else [])
+        or "intent_id" not in (dim_intent_df.columns if dim_intent_df is not None else [])
+    ):
+        st.info("Treemap drilldown needs ontology mapping (dim_intent_df with intent_id + lifestyle_id). Generate/upload ontology in Step 2.")
     else:
         import plotly.express as px
 
+        # -------------------------
         # Build mapping tables
+        # -------------------------
         dim_i = dim_intent_df.copy()
         dim_i.columns = dim_i.columns.str.strip().str.lower()
+
+        # Required fields
         dim_i["intent_id"] = dim_i["intent_id"].astype(str).str.strip()
         dim_i["lifestyle_id"] = dim_i["lifestyle_id"].fillna("").astype(str).str.strip()
+
+        # Prefer human-readable names
         if "intent_name" not in dim_i.columns:
             dim_i["intent_name"] = ""
         dim_i["intent_name"] = dim_i["intent_name"].fillna("").astype(str).str.strip()
 
-        # Lifestyle name map (prefer dim_lifestyle_df then ontology)
+        # Small mapping table
+        dim_i_small = dim_i[["intent_id", "intent_name", "lifestyle_id"]].drop_duplicates().copy()
+
+        # Lifestyle name map (prefer dim_lifestyle_df then ontology JSON)
         ls_map = None
-        if dim_lifestyle_df is not None and "lifestyle_name" in dim_lifestyle_df.columns and "lifestyle_id" in dim_lifestyle_df.columns:
-            ls_map = dim_lifestyle_df[["lifestyle_id", "lifestyle_name"]].drop_duplicates().copy()
-            ls_map["lifestyle_id"] = ls_map["lifestyle_id"].astype(str).str.strip()
-            ls_map["lifestyle_name"] = ls_map["lifestyle_name"].fillna("Unknown").astype(str).str.strip()
-        else:
+        if (
+            "dim_lifestyle_df" in st.session_state
+            and st.session_state["dim_lifestyle_df"] is not None
+        ):
+            dim_lifestyle_df = st.session_state["dim_lifestyle_df"].copy()
+            dim_lifestyle_df.columns = dim_lifestyle_df.columns.str.strip().str.lower()
+
+            if "lifestyle_id" in dim_lifestyle_df.columns and "lifestyle_name" in dim_lifestyle_df.columns:
+                ls_map = dim_lifestyle_df[["lifestyle_id", "lifestyle_name"]].drop_duplicates().copy()
+                ls_map["lifestyle_id"] = ls_map["lifestyle_id"].astype(str).str.strip()
+                ls_map["lifestyle_name"] = ls_map["lifestyle_name"].fillna("Unknown").astype(str).str.strip()
+
+        if ls_map is None or len(ls_map) == 0:
+            # Fallback: build from ontology JSON (helper defined earlier in Step 5)
             ls_map = _get_lifestyle_name_map_from_ontology()
 
+        # -------------------------
         # Start from customer intent profile
+        # -------------------------
         ci = df_ci.copy()
         ci.columns = ci.columns.str.strip().str.lower()
+
         ci["customer_id"] = ci["customer_id"].astype(str).str.strip()
         ci["intent_id"] = ci["intent_id"].astype(str).str.strip()
-        ci["intent_share"] = pd.to_numeric(ci.get("intent_share", 0.0), errors="coerce").fillna(0.0)
 
+        if "intent_share" not in ci.columns:
+            ci["intent_share"] = 0.0
+        ci["intent_share"] = pd.to_numeric(ci["intent_share"], errors="coerce").fillna(0.0)
+
+        # -------------------------
         # Controls
+        # -------------------------
         cc1, cc2 = st.columns([1, 1])
         with cc1:
             treemap_rank_threshold = st.selectbox(
@@ -2448,31 +2478,40 @@ else:
         if "rank" in ci.columns and int(treemap_rank_threshold) != 999:
             ci = ci[ci["rank"].fillna(999).astype(int) <= int(treemap_rank_threshold)].copy()
 
-        # Attach lifestyle_id + names
-        j = ci.merge(dim_i[["intent_id", "intent_name", "lifestyle_id"]].drop_duplicates(), on="intent_id", how="left")
+        # -------------------------
+        # Attach lifestyle + intent names
+        # -------------------------
+        j = ci.merge(dim_i_small, on="intent_id", how="left")
+
+        # Clean lifestyle_id
+        if "lifestyle_id" not in j.columns:
+            j["lifestyle_id"] = ""
         j["lifestyle_id"] = j["lifestyle_id"].fillna("").astype(str).str.strip()
 
-        # Filter only mappable intents (prevents “Unknown” noise)
+        # Filter only mappable intents (prevents Unknown noise)
         j = j[j["lifestyle_id"] != ""].copy()
 
+        # Lifestyle names
         if ls_map is not None and len(ls_map) > 0:
             j = j.merge(ls_map, on="lifestyle_id", how="left")
-        else:
+        if "lifestyle_name" not in j.columns:
             j["lifestyle_name"] = "Unknown"
-
-        j["lifestyle_name"] = j.get("lifestyle_name", "Unknown").fillna("Unknown").astype(str).str.strip()
+        j["lifestyle_name"] = j["lifestyle_name"].fillna("Unknown").astype(str).str.strip()
         j.loc[j["lifestyle_name"] == "", "lifestyle_name"] = "Unknown"
 
-        # Ensure intent_name exists safely (avoid j.get(...) returning a string)
+        # Intent label: show intent_name (fallback to intent_id if missing)
         if "intent_name" not in j.columns:
             j["intent_name"] = ""
         j["intent_name"] = j["intent_name"].fillna("").astype(str).str.strip()
-        j.loc[j["intent_name"] == "", "intent_name"] = j["intent_id"].astype(str)
 
+        j["intent_label"] = j["intent_name"]
+        j.loc[j["intent_label"] == "", "intent_label"] = j["intent_id"].astype(str)
 
+        # -------------------------
         # Aggregate distinct customer count per lifestyle-intent
+        # -------------------------
         treemap_df = (
-            j.groupby(["lifestyle_name", "intent_name"], as_index=False)
+            j.groupby(["lifestyle_name", "intent_label"], as_index=False)
             .agg(
                 customer_count=("customer_id", "nunique"),
                 avg_share=("intent_share", "mean"),
@@ -2487,7 +2526,7 @@ else:
         else:
             fig = px.treemap(
                 treemap_df,
-                path=["lifestyle_name", "intent_name"],  # click lifestyle => drill down
+                path=["lifestyle_name", "intent_label"],  # click lifestyle => drill down
                 values="customer_count",
                 hover_data={
                     "customer_count": True,
@@ -2496,6 +2535,7 @@ else:
             )
             fig.update_layout(height=560, margin=dict(t=10, l=10, r=10, b=10))
             st.plotly_chart(fig, use_container_width=True)
+
 
 # ============================================================================
 # Step 5 Outputs (tables + downloads)
