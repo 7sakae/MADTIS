@@ -3023,5 +3023,3 @@ else:
             )
             fig.update_layout(height=560, margin=dict(t=10, l=10, r=10, b=10))
             st.plotly_chart(fig, use_container_width=True)
-
-
