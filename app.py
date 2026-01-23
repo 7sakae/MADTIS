@@ -1657,7 +1657,7 @@ if st.session_state.get("campaign_intent_profiles_json") is not None:
 # Product labeling runs directly against the ontology intent list.
 
 # ============================================================================
-# STEP 4: PRODUCT → INTENT LABELING (UPLOAD OR LLM)
+# STEP 4: PRODUCT → INTENT LABELING (UPLOAD OR LLM) — CONSISTENT IDs WITH STEP 2
 # ============================================================================
 st.divider()
 st.header("Step 4: Product → Intent Labeling")
@@ -1674,18 +1674,21 @@ if "product_intent_labels_df" not in st.session_state:
 if "product_intent_labels_json" not in st.session_state:
     st.session_state["product_intent_labels_json"] = None
 
-mode = st.radio("Choose labeling mode", ["Upload labeled CSV (Mode A)", "Run Gemini labeling (Mode B)"], horizontal=True, key="step4_mode")
+mode = st.radio(
+    "Choose labeling mode",
+    ["Upload labeled CSV (Mode A)", "Run Gemini labeling (Mode B)"],
+    horizontal=True,
+    key="step4_mode"
+)
 
 # -------------------------
 # MODE A: Upload labels CSV
 # -------------------------
 if mode == "Upload labeled CSV (Mode A)":
     st.subheader("📤 Upload product intent labels CSV")
-
     st.caption(
-        "Accepted formats:\n"
-        "- Long format: product_id, intent_id, score (optional: intent_name, evidence, reason)\n"
-        "- Wide JSON-like not supported here — upload CSV only."
+        "Accepted format (long): product_id, intent_id (optional: score, intent_name, evidence, reason)\n"
+        "Important: intent_id MUST match the ontology in Step 2, or Step 5 will not work."
     )
 
     up = st.file_uploader("Upload product_intent_labels.csv", type=["csv"], key="step4_upload_labels")
@@ -1699,7 +1702,6 @@ if mode == "Upload labeled CSV (Mode A)":
                 df = pd.read_csv(up)
                 df.columns = df.columns.str.strip().str.lower()
 
-                # minimal required
                 required = {"product_id", "intent_id"}
                 missing = required - set(df.columns)
                 if missing:
@@ -1707,7 +1709,10 @@ if mode == "Upload labeled CSV (Mode A)":
                     st.info(f"Found columns: {df.columns.tolist()}")
                     st.stop()
 
-                # Normalize columns
+                # Normalize
+                df["product_id"] = df["product_id"].astype(str).str.strip()
+                df["intent_id"] = df["intent_id"].astype(str).str.strip()
+
                 if "score" not in df.columns:
                     df["score"] = 1.0
                 df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0.0).clip(0, 1)
@@ -1721,36 +1726,47 @@ if mode == "Upload labeled CSV (Mode A)":
                     )
                     df["product_name"] = df["product_name"].fillna("")
 
-                # Attach intent_name if missing and ontology exists
-                if "intent_name" not in df.columns and "dim_intent_df" in st.session_state:
+                # If ontology exists, enforce that uploaded IDs are valid (optional but strongly recommended)
+                if "dim_intent_df" in st.session_state:
                     dim_intent_df = st.session_state["dim_intent_df"].copy()
                     dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
-                    if "intent_id" in dim_intent_df.columns and "intent_name" in dim_intent_df.columns:
-                        df = df.merge(
-                            dim_intent_df[["intent_id", "intent_name"]],
-                            on="intent_id",
-                            how="left"
-                        )
-                        df["intent_name"] = df["intent_name"].fillna("")
+                    dim_intent_df["intent_id"] = dim_intent_df["intent_id"].astype(str).str.strip()
+                    dim_intent_df["intent_name"] = dim_intent_df["intent_name"].astype(str).str.strip()
 
+                    valid_ids = set(dim_intent_df["intent_id"].tolist())
+                    bad = df.loc[~df["intent_id"].isin(valid_ids), "intent_id"].drop_duplicates().head(30).tolist()
+
+                    if len(bad) > 0:
+                        st.error("❌ Uploaded labels contain intent_id values not found in Step 2 ontology.")
+                        st.write("Examples of unknown intent_id:", bad)
+                        st.info("Fix: upload labels built from the same ontology OR rerun Step 4 Mode B after Step 2.")
+                        st.stop()
+
+                    # Attach canonical intent_name
+                    id_to_name = dict(zip(dim_intent_df["intent_id"], dim_intent_df["intent_name"]))
+                    df["intent_name"] = df.get("intent_name", "").astype(str)
+                    df["intent_name"] = df["intent_id"].map(id_to_name).fillna(df["intent_name"]).fillna("")
+
+                # Fill optional fields
                 if "evidence" not in df.columns:
                     df["evidence"] = ""
                 if "reason" not in df.columns:
                     df["reason"] = ""
 
                 # Create rank per product by score desc
-                df = df.copy()
-                df["product_id"] = df["product_id"].astype(str)
-                df["intent_id"] = df["intent_id"].astype(str)
-                df = df.sort_values(["product_id", "score"], ascending=[True, False])
+                df = df.sort_values(["product_id", "score"], ascending=[True, False]).copy()
                 df["rank"] = df.groupby("product_id").cumcount() + 1
 
                 # Add metadata columns
                 ontology_version = "v1"
                 if "ontology" in st.session_state:
                     ontology_version = str(st.session_state["ontology"].get("version", "v1"))
+
                 df["ontology_version"] = df.get("ontology_version", ontology_version)
-                df["labeling_run_id"] = df.get("labeling_run_id", f"upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
+                df["labeling_run_id"] = df.get(
+                    "labeling_run_id",
+                    f"upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+                )
                 df["model"] = df.get("model", "uploaded")
                 df["created_at"] = df.get("created_at", pd.Timestamp.now().isoformat())
 
@@ -1760,6 +1776,7 @@ if mode == "Upload labeled CSV (Mode A)":
                     pname = ""
                     if "product_name" in g.columns and g["product_name"].notna().any():
                         pname = str(g["product_name"].dropna().iloc[0])
+
                     top_intents = []
                     for _, r in g.iterrows():
                         top_intents.append({
@@ -1774,7 +1791,7 @@ if mode == "Upload labeled CSV (Mode A)":
                         "product_id": str(pid),
                         "product_name": pname,
                         "top_intents": top_intents,
-                        "ontology_version": str(g.get("ontology_version", ontology_version).iloc[0]) if "ontology_version" in g.columns else ontology_version,
+                        "ontology_version": ontology_version,
                         "labeling_run_id": str(g.get("labeling_run_id", "").iloc[0]) if "labeling_run_id" in g.columns else "",
                         "model": str(g.get("model", "").iloc[0]) if "model" in g.columns else "uploaded",
                         "created_at": str(g.get("created_at", "").iloc[0]) if "created_at" in g.columns else pd.Timestamp.now().isoformat(),
@@ -1792,17 +1809,52 @@ if mode == "Upload labeled CSV (Mode A)":
                 st.exception(e)
 
 # -------------------------
-# MODE B: Run Gemini labeling
+# MODE B: Run Gemini labeling (ENFORCE CONSISTENT IDs)
 # -------------------------
 else:
-    # Preconditions for LLM mode
+    # Preconditions
     if "dim_intent_df" not in st.session_state or "ontology" not in st.session_state:
         st.info("👆 Generate or upload the ontology in Step 2 first (needed for LLM labeling).")
         st.stop()
 
     dim_intent_df = st.session_state["dim_intent_df"].copy()
+    dim_intent_df.columns = dim_intent_df.columns.str.strip().str.lower()
     ontology = st.session_state["ontology"]
     ontology_version = str(ontology.get("version", "v1"))
+
+    # --- Canonical lookups (from Step 2) ---
+    dim_intent_df["intent_id"] = dim_intent_df["intent_id"].astype(str).str.strip()
+    dim_intent_df["intent_name"] = dim_intent_df["intent_name"].astype(str).str.strip()
+
+    canon_id_set = set(dim_intent_df["intent_id"].tolist())
+    canon_id_to_name = dict(zip(dim_intent_df["intent_id"], dim_intent_df["intent_name"]))
+
+    def _norm_name(s: str) -> str:
+        s = (s or "").strip().lower()
+        s = re.sub(r"\s+", " ", s)
+        s = re.sub(r"[^a-z0-9ก-๙\s\-_]", "", s)
+        return s
+
+    canon_name_to_id = {}
+    for _, r in dim_intent_df.iterrows():
+        canon_name_to_id[_norm_name(r["intent_name"])] = r["intent_id"]
+
+    def canonicalize_intent(iid: str, iname: str):
+        """Return (canonical_intent_id, canonical_intent_name) or (None, None) if cannot map."""
+        iid = str(iid or "").strip()
+        iname = str(iname or "").strip()
+
+        # If ID already valid, accept and canonicalize name
+        if iid and iid in canon_id_set:
+            return iid, canon_id_to_name.get(iid, iname)
+
+        # Fallback: map by intent_name
+        key = _norm_name(iname)
+        if key and key in canon_name_to_id:
+            cid = canon_name_to_id[key]
+            return cid, canon_id_to_name.get(cid, iname)
+
+        return None, None
 
     st.subheader("🔑 API Configuration")
     gemini_api_key = None
@@ -1837,9 +1889,12 @@ else:
         products_per_request = st.number_input("Products per request (batch size)", min_value=1, max_value=12, value=4, key="step4_products_per_request")
         max_retries = st.number_input("Max retries on 429", min_value=0, max_value=10, value=4, key="step4_max_retries")
 
+    # Optional: Keep prompt small (reuse Step 3 param if exists)
+    intent_snippet_max_chars = int(st.session_state.get("step3_intent_snippet_max_chars", 16000)) if "step3_intent_snippet_max_chars" in st.session_state else 16000
+
     label_btn = st.button("🏷️ Run Product → Intent Labeling", type="primary", use_container_width=True, key="step4_run_btn")
 
-    # Prepare concise intent list
+    # Prepare concise intent list (canonical)
     intent_candidates = []
     for _, r in dim_intent_df.iterrows():
         intent_candidates.append({
@@ -1891,7 +1946,7 @@ else:
                         prompt = f"""
 You are labeling retail products into a fixed Intent Ontology for marketing.
 
-You MUST choose intents ONLY from this list (do not invent new intents):
+You MUST choose intents ONLY from this canonical list (do not invent new intents):
 {intent_snippet}
 
 Input products (JSON):
@@ -1900,8 +1955,8 @@ Input products (JSON):
 Task for EACH product:
 1) Select TOP {int(top_k_intents)} intents most relevant to the product.
 2) For each selected intent, output:
-   - intent_id
-   - intent_name
+   - intent_id (MUST come from the canonical list)
+   - intent_name (MUST match the canonical list)
    - score (0.0 to 1.0, higher = more relevant)
    - evidence (short phrase copied or paraphrased from product text)
    - reason (1 short sentence)
@@ -1939,19 +1994,31 @@ Return STRICT minified JSON:
 
                             cleaned = []
                             for it in intents:
-                                iid = str(it.get("intent_id", "")).strip()
-                                iname = str(it.get("intent_name", "")).strip()
+                                iid_raw = str(it.get("intent_id", "")).strip()
+                                iname_raw = str(it.get("intent_name", "")).strip()
                                 score = clamp01(it.get("score", 0.0))
                                 evidence = str(it.get("evidence", "")).strip()
                                 reason = str(it.get("reason", "")).strip()
-                                if iid and iname:
-                                    cleaned.append({
-                                        "intent_id": iid,
-                                        "intent_name": iname,
-                                        "score": score,
-                                        "evidence": evidence,
-                                        "reason": reason
-                                    })
+
+                                # ✅ Canonicalize to Step 2 IDs
+                                cid, cname = canonicalize_intent(iid_raw, iname_raw)
+                                if cid is None:
+                                    continue  # drop non-mappable intents
+
+                                cleaned.append({
+                                    "intent_id": cid,
+                                    "intent_name": cname,
+                                    "score": score,
+                                    "evidence": evidence,
+                                    "reason": reason
+                                })
+
+                            # De-dup by intent_id, keep best score
+                            best = {}
+                            for x in cleaned:
+                                if (x["intent_id"] not in best) or (x["score"] > best[x["intent_id"]]["score"]):
+                                    best[x["intent_id"]] = x
+                            cleaned = list(best.values())
 
                             cleaned = sorted(cleaned, key=lambda x: x["score"], reverse=True)
                             cleaned = [x for x in cleaned if x["score"] >= float(min_score)]
@@ -1967,16 +2034,16 @@ Return STRICT minified JSON:
                                 "created_at": created_at
                             })
 
-                            for rank, it in enumerate(cleaned, start=1):
+                            for rank, it2 in enumerate(cleaned, start=1):
                                 results_rows.append({
                                     "product_id": pid,
                                     "product_name": pname,
                                     "rank": rank,
-                                    "intent_id": it["intent_id"],
-                                    "intent_name": it["intent_name"],
-                                    "score": it["score"],
-                                    "evidence": it["evidence"],
-                                    "reason": it["reason"],
+                                    "intent_id": it2["intent_id"],
+                                    "intent_name": it2["intent_name"],
+                                    "score": it2["score"],
+                                    "evidence": it2["evidence"],
+                                    "reason": it2["reason"],
                                     "ontology_version": ontology_version,
                                     "labeling_run_id": labeling_run_id,
                                     "model": model_name,
@@ -1989,10 +2056,17 @@ Return STRICT minified JSON:
 
                         progress.progress((b_idx + 1) / max(total_batches, 1))
 
-                st.success("✅ Product → Intent labeling completed (Top-K + scores + evidence).")
+                st.success("✅ Product → Intent labeling completed (canonical IDs enforced).")
 
             st.session_state["product_intent_labels_df"] = pd.DataFrame(results_rows)
             st.session_state["product_intent_labels_json"] = labels_json
+
+            # Optional: show health check
+            with st.expander("✅ Step 4 Health Check (ID overlap)", expanded=False):
+                lbl = st.session_state["product_intent_labels_df"].copy()
+                lbl["intent_id"] = lbl["intent_id"].astype(str).str.strip()
+                overlap = lbl["intent_id"].isin(dim_intent_df["intent_id"]).mean() * 100.0
+                st.write(f"Intent ID overlap vs Step 2 ontology: {overlap:.1f}% (should be ~100%)")
 
         except ImportError:
             st.error("❌ Missing library: google-generativeai. Please add it to requirements.txt")
@@ -2029,6 +2103,7 @@ if st.session_state.get("product_intent_labels_json") is not None:
         mime="application/json",
         use_container_width=True
     )
+
 # st.write("labels intents:", labels_df["intent_id"].nunique())
 # st.write("ontology intents:", dim_intent_df["intent_id"].nunique())
 # st.write("overlap intents:", labels_df["intent_id"].isin(dim_intent_df["intent_id"]).sum())
